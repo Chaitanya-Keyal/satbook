@@ -121,6 +121,10 @@ async function main() {
 						amountSats: u.amountSats,
 						feeSats: u.feeSats,
 						feeInrValueMinor: u.feeInrValueMinor,
+						// The as-entered rate belonged to the pre-split amount; the stored
+						// integers are now the only truth and the rate derives from them.
+						enteredRate: null,
+						rateSource: null,
 						updatedAt: Math.floor(Date.now() / 1000)
 					})
 					.where(eq(schema.transactions.id, u.id))

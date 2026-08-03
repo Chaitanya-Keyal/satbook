@@ -280,7 +280,7 @@
 
 		<!-- Reconciliation — a free integrity check, loud when it fails -->
 		<p class="mt-3 num text-xs">
-			Σ {formatAmount(data.holdingsSats, unit.value)}
+			Total {formatAmount(data.holdingsSats, unit.value)}
 			{#if reconciled}
 				<span class="inline-flex items-center gap-1 text-gain">
 					= current holdings <Check size={12} aria-hidden="true" />

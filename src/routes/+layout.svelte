@@ -187,7 +187,7 @@
 		['g t', 'Go to transactions'],
 		['g w', 'Go to wallets'],
 		['g x', 'Go to tax'],
-		['u', 'Flip sats ⇄ BTC'],
+		['u', 'Flip sats / BTC'],
 		['/', 'Search ledger (on /tx)'],
 		['?', 'This cheatsheet'],
 		['esc', 'Close / cancel']

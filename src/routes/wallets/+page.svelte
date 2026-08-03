@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Check from '@lucide/svelte/icons/check';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
@@ -241,9 +242,9 @@
 					<a
 						href="/tx?wallet={w.id}"
 						role="menuitem"
-						class="block px-3 py-1.5 transition-colors duration-100 hover:bg-surface"
+						class="flex items-center gap-1 px-3 py-1.5 transition-colors duration-100 hover:bg-surface"
 					>
-						View transactions →
+						View transactions <ArrowRight size={14} aria-hidden="true" />
 					</a>
 				</div>
 			{/if}
@@ -334,7 +335,13 @@
 				<tbody>
 					{#each data.transfers as t (t.id)}
 						<tr class="border-b border-border/60 last:border-0">
-							<td class="py-2 pr-4 whitespace-nowrap">{t.fromName} → {t.toName}</td>
+							<td class="py-2 pr-4 whitespace-nowrap">
+								{t.fromName}<ArrowRight
+									size={12}
+									class="mx-1 inline-block align-middle"
+									aria-hidden="true"
+								/><span class="sr-only">to </span>{t.toName}
+							</td>
 							<td class="py-2 pr-4 text-right num whitespace-nowrap">
 								{formatAmount(t.amountSats, unit.value)}
 							</td>

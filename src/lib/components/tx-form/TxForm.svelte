@@ -7,6 +7,7 @@
 	// integers (sats/paise) via hidden canonical fields.
 	import { enhance } from '$app/forms';
 	import { goto } from '$app/navigation';
+	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import LotSliceTable from '$lib/components/LotSliceTable.svelte';
 	import type {
 		FiatCurrency,
@@ -18,7 +19,7 @@
 		ValidationIssue,
 		WalletKind
 	} from '$lib/types';
-	import { formatInr, formatRateInr, formatSats } from '$lib/utils/money';
+	import { formatInr, formatSats } from '$lib/utils/money';
 	import {
 		formatIstDateShort,
 		formatIstFull,
@@ -180,12 +181,14 @@
 				s.manual = ['btc'];
 			} else {
 				s.fiatMinor = tx.fiatAmountMinor;
+				// The stored integers are authoritative — the displayed rate always
+				// derives from them. enteredRate is only a last resort (it can go
+				// stale when amounts are later corrected, e.g. a fee split).
 				s.rate =
-					tx.enteredRate ??
-					(tx.fiatAmountMinor != null && tx.amountSats > 0
+					tx.fiatAmountMinor != null && tx.amountSats > 0
 						? (tx.fiatAmountMinor * 1e6) / tx.amountSats
-						: null);
-				s.manual = ['btc', 'fiat']; // stored integers are authoritative; rate re-derives
+						: (tx.enteredRate ?? null);
+				s.manual = ['btc', 'fiat'];
 			}
 			return s;
 		}
@@ -534,6 +537,10 @@
 
 	const feeInrMinor = $derived.by(() => {
 		if (!feeType || feeSats == null || feeSats <= 0) return null;
+		// Editing an unchanged fee: the FMV stored at transaction time is the
+		// truth; only an edited fee is revalued at the current/backdated rate.
+		if (tx?.type === type && feeSats === tx.feeSats && tx.feeInrValueMinor != null)
+			return tx.feeInrValueMinor;
 		if (inrPerBtc != null) return Math.round((feeSats * inrPerBtc) / 1e6);
 		return tx?.type === type ? (tx.feeInrValueMinor ?? null) : null;
 	});
@@ -997,9 +1004,7 @@
 			<p class="mt-1 text-[11px] text-muted">Fee reduces holdings; never taxed, never deductible</p>
 			{#if feeInrMinor != null}
 				<p class="mt-0.5 num text-[11px] text-muted">
-					≈ {formatInr(feeInrMinor)}{inrPerBtc != null
-						? ` at ${formatRateInr(inrPerBtc)} / BTC`
-						: ''}
+					≈ {formatInr(feeInrMinor)}
 				</p>
 			{/if}
 		</div>
@@ -1090,9 +1095,7 @@
 				</p>
 				{#if feeInrMinor != null}
 					<p class="mt-0.5 num text-[11px] text-muted">
-						≈ {formatInr(feeInrMinor)}{inrPerBtc != null
-							? ` at ${formatRateInr(inrPerBtc)} / BTC`
-							: ''}
+						≈ {formatInr(feeInrMinor)}
 					</p>
 				{/if}
 			</div>
@@ -1263,7 +1266,13 @@
 					<span class="text-muted">
 						· consumes {d.slices.length} lot{d.slices.length === 1 ? '' : 's'}
 					</span>
-					<span class="ml-auto text-muted" aria-hidden="true">{previewOpen ? '▾' : '▸'}</span>
+					<ChevronRight
+						size={14}
+						class="ml-auto text-muted transition-transform duration-150 {previewOpen
+							? 'rotate-90'
+							: ''}"
+						aria-hidden="true"
+					/>
 				</button>
 				{#if previewOpen}
 					<div class="border-t border-border/60 px-3 pt-1 pb-2">

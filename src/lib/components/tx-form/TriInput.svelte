@@ -4,6 +4,7 @@
 	// fiat side and the FX conversion row for USD/EUR. The parent owns the
 	// TriadState ($state proxy) and rate/FX fetch orchestration; this component
 	// renders it and applies user edits.
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import type { FiatCurrency } from '$lib/types';
 	import { formatInr, formatRateInr, parseFiatShorthand } from '$lib/utils/money';
 	import BtcAmountInput from './BtcAmountInput.svelte';
@@ -311,7 +312,10 @@
 			</span>
 		{/if}
 		{#if inrRecordedMinor != null}
-			<span class="text-muted">→ {formatInr(inrRecordedMinor)} will be recorded</span>
+			<span class="text-muted">
+				<ArrowRight size={12} class="inline-block align-middle" aria-hidden="true" />
+				{formatInr(inrRecordedMinor)} will be recorded
+			</span>
 		{/if}
 	</div>
 	{#if fxError}
