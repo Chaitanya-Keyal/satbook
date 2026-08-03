@@ -25,3 +25,6 @@ vite.config.ts.timestamp-*
 # Local data
 /data
 *.xlsx
+
+# Editor
+.vscode/
