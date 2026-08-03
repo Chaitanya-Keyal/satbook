@@ -1,0 +1,16 @@
+# Reference compose file — deployment is manual; see README "Deploying".
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    # Bind to localhost only; put Caddy/nginx in front for TLS.
+    ports:
+      - '127.0.0.1:3000:3000'
+    env_file: .env
+    environment:
+      - DATABASE_PATH=/data/btc.db
+    volumes:
+      - btcdata:/data
+
+volumes:
+  btcdata:
