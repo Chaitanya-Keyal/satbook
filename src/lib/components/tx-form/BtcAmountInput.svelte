@@ -3,6 +3,7 @@
 	// per-field ⇄ override; sats mode groups digits live with thin spaces; the
 	// equivalent in the other unit renders as helper text. `derived` fields show
 	// the ƒ glyph and the app-wide dimmed-italic derived voice.
+	import ArrowLeftRight from '@lucide/svelte/icons/arrow-left-right';
 	import { unit } from '$lib/stores/unit.svelte';
 	import { formatBtc, formatSats } from '$lib/utils/money';
 	import { parseBtcText } from './triad';
@@ -124,7 +125,7 @@
 				aria-label="flip unit for this field"
 				onclick={flip}
 			>
-				⇄
+				<ArrowLeftRight size={12} aria-hidden="true" />
 			</button>
 		{/if}
 	</div>

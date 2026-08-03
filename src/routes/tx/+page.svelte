@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { replaceState } from '$app/navigation';
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Check from '@lucide/svelte/icons/check';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import Copy from '@lucide/svelte/icons/copy';
@@ -111,12 +112,6 @@
 
 	const walletNames = $derived(new Map(data.wallets.map((w) => [w.id, w.name])));
 	const nameOf = (id: number | null) => (id != null ? (walletNames.get(id) ?? `#${id}`) : '?');
-
-	function walletLabel(t: TxRow): string {
-		return t.type === 'TRANSFER'
-			? `${nameOf(t.fromWalletId)} → ${nameOf(t.toWalletId)}`
-			: nameOf(t.walletId);
-	}
 
 	function btcCell(t: TxRow): { text: string; cls: string } {
 		if (t.type === 'TRANSFER') return { text: formatAmount(t.amountSats, unit.value), cls: '' };
@@ -294,6 +289,18 @@
 	{/if}
 {/snippet}
 
+{#snippet walletRoute(t: TxRow)}
+	{#if t.type === 'TRANSFER'}
+		{nameOf(t.fromWalletId)}<ArrowRight
+			size={12}
+			class="mx-1 inline-block align-middle"
+			aria-hidden="true"
+		/><span class="sr-only">to </span>{nameOf(t.toWalletId)}
+	{:else}
+		{nameOf(t.walletId)}
+	{/if}
+{/snippet}
+
 {#snippet expansion(t: TxRow)}
 	{@const disposal = data.disposals[t.id]}
 	{@const lot = data.openLots[t.id]}
@@ -366,7 +373,10 @@
 								>
 							{/if}
 							{#if t.inrValueMinor != null}
-								<span class="text-muted">→ {formatInr(t.inrValueMinor)} recorded</span>
+								<span class="text-muted">
+									<ArrowRight size={12} class="inline-block align-middle" aria-hidden="true" />
+									{formatInr(t.inrValueMinor)} recorded
+								</span>
 							{/if}
 						</p>
 					</div>
@@ -545,7 +555,7 @@
 							{formatIstDateShort(t.ts)}
 						</td>
 						<td class="py-2 pr-3"><TypeBadge type={t.type} /></td>
-						<td class="py-2 pr-3 whitespace-nowrap text-muted">{walletLabel(t)}</td>
+						<td class="py-2 pr-3 whitespace-nowrap text-muted">{@render walletRoute(t)}</td>
 						<td class="py-2 pr-3 text-right num whitespace-nowrap {btc.cls}">{btc.text}</td>
 						<td class="py-2 pr-3 text-right num whitespace-nowrap {inr?.cls ?? 'text-muted'}">
 							{inr?.text ?? EM}
@@ -598,7 +608,7 @@
 						<TypeBadge type={t.type} />
 						<span class="num text-xs">{formatIstDateShort(t.ts)}</span>
 						<span class="min-w-0 flex-1 truncate text-right text-xs text-muted">
-							{walletLabel(t)}
+							{@render walletRoute(t)}
 						</span>
 					</span>
 					<span class="mt-1.5 flex items-baseline justify-between gap-3">

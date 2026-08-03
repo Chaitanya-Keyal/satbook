@@ -1,4 +1,5 @@
 <script lang="ts">
+	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import PortfolioChart from '$lib/components/PortfolioChart.svelte';
 	import Tile from '$lib/components/Tile.svelte';
 	import TypeBadge from '$lib/components/TypeBadge.svelte';
@@ -81,7 +82,7 @@
 			case 'SPEND':
 				return `Spent ${amount} · ${t.walletName ?? '?'}`;
 			case 'TRANSFER':
-				return `Transfer ${t.fromName ?? '?'} → ${t.toName ?? '?'}`;
+				return `Transfer ${t.fromName ?? '?'} to ${t.toName ?? '?'}`;
 		}
 	}
 
@@ -285,9 +286,9 @@
 			</ul>
 			<a
 				href="/tx"
-				class="mt-auto pt-3 text-xs text-muted transition-colors duration-100 hover:text-text"
+				class="mt-auto inline-flex items-center gap-1 pt-3 text-xs text-muted transition-colors duration-100 hover:text-text"
 			>
-				All transactions →
+				All transactions <ArrowRight size={14} aria-hidden="true" />
 			</a>
 		{/if}
 	</section>
