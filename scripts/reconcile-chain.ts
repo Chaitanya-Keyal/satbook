@@ -1,6 +1,8 @@
-// One-time data fix: separate network fees out of SELL/SPEND rows using the
-// on-chain transaction, and verify recorded TRANSFER fees against the chain.
-//   bun scripts/split-network-fees.ts [--commit]
+// Chain reconciliation: separate network fees out of SELL/SPEND rows, verify
+// recorded TRANSFER fees, and correct timestamps against the on-chain
+// transaction (sheet time columns can carry a uniform offset error that the
+// importer's IST-vs-UTC cross-check cannot see).
+//   bun scripts/reconcile-chain.ts [--commit]
 //
 // For each SELL/SPEND with a txid whose wallet is self-custody (the user paid
 // the miner fee; exchange-hosted wallets absorb their own fees):
@@ -36,23 +38,40 @@ async function main() {
 		feeInrValueMinor: number | null;
 		why: string;
 	}[] = [];
+	const tsFixes: { id: number; ts: number; why: string }[] = [];
 	const notes: string[] = [];
+	const TS_TOLERANCE_SEC = 120;
+
+	const checkTs = (id: number, recorded: number, blockTime: number | null) => {
+		if (blockTime == null) return;
+		const drift = blockTime - recorded;
+		if (Math.abs(drift) > TS_TOLERANCE_SEC)
+			tsFixes.push({
+				id,
+				ts: blockTime,
+				why: `recorded ts off chain block time by ${drift}s`
+			});
+	};
 
 	for (const r of rows) {
 		if (!r.txid) continue;
 
+		// Every txid-bearing row gets the timestamp check, whatever its type —
+		// sheet time columns have carried IST wall time in the UTC column.
+		const chain = await fetchTx(r.txid);
+		if (!chain) {
+			notes.push(`#${r.id} ${r.type}: txid ${r.txid.slice(0, 12)}… not fetchable — skipped`);
+			continue;
+		}
+		checkTs(r.id, r.ts, chain.blockTime);
+
 		if (r.type === 'SELL' || r.type === 'SPEND') {
 			if (kindOf.get(r.walletId!) === 'exchange') {
-				notes.push(`#${r.id} ${r.type}: exchange wallet pays its own fee — skipped`);
+				notes.push(`#${r.id} ${r.type}: exchange wallet pays its own fee — fee split skipped`);
 				continue;
 			}
 			if (r.feeSats > 0) {
-				notes.push(`#${r.id} ${r.type}: already has feeSats=${r.feeSats} — skipped`);
-				continue;
-			}
-			const chain = await fetchTx(r.txid);
-			if (!chain) {
-				notes.push(`#${r.id} ${r.type}: txid ${r.txid.slice(0, 12)}… not fetchable — skipped`);
+				notes.push(`#${r.id} ${r.type}: already has feeSats=${r.feeSats} — fee split skipped`);
 				continue;
 			}
 			const F = chain.feeSats;
@@ -86,11 +105,6 @@ async function main() {
 		}
 
 		if (r.type === 'TRANSFER') {
-			const chain = await fetchTx(r.txid);
-			if (!chain) {
-				notes.push(`#${r.id} TRANSFER: txid not fetchable — skipped`);
-				continue;
-			}
 			const src = kindOf.get(r.fromWalletId!);
 			if (src === 'exchange') {
 				notes.push(
@@ -106,15 +120,23 @@ async function main() {
 		}
 	}
 
-	console.log(`\n${COMMIT ? 'COMMIT' : 'DRY RUN'} — ${updates.length} row(s) to update\n`);
+	console.log(
+		`\n${COMMIT ? 'COMMIT' : 'DRY RUN'} — ${updates.length} fee split(s), ${tsFixes.length} timestamp fix(es)\n`
+	);
 	for (const u of updates)
-		console.log(`  #${u.id}: amount → ${u.amountSats}, fee → ${u.feeSats} (${u.why})`);
+		console.log(`  #${u.id}: amount to ${u.amountSats}, fee to ${u.feeSats} (${u.why})`);
+	for (const t of tsFixes) console.log(`  #${t.id}: ts to ${t.ts} (${t.why})`);
 	console.log();
 	for (const n of notes) console.log(`  ${n}`);
 
 	const before = computePortfolio(getLedger());
 	if (COMMIT) {
 		db.transaction(() => {
+			for (const t of tsFixes)
+				db.update(schema.transactions)
+					.set({ ts: t.ts, updatedAt: Math.floor(Date.now() / 1000) })
+					.where(eq(schema.transactions.id, t.id))
+					.run();
 			for (const u of updates)
 				db.update(schema.transactions)
 					.set({

@@ -62,6 +62,19 @@ bun scripts/import-xlsx.ts your-sheet.xlsx            # dry-run + reconciliation
 bun scripts/import-xlsx.ts your-sheet.xlsx --commit   # write (refuses on any engine issue)
 ```
 
+After importing, set each wallet's kind (hot / cold / exchange) on the Wallets
+screen, then reconcile against the chain — it verifies every row that carries a
+txid, splits network fees out of disposal amounts, checks transfer fees, and
+corrects timestamps to on-chain block time (spreadsheet time columns often
+carry a uniform timezone error that no internal check can catch):
+
+```sh
+bun scripts/reconcile-chain.ts            # dry-run report
+bun scripts/reconcile-chain.ts --commit   # apply; re-run until it reports 0 fixes
+```
+
+The whole seed is reproducible: wipe `data/btc.db`, re-import, reconcile.
+
 ## Tax model (read before filing)
 
 - Global FIFO cost basis across wallets — the prevailing practice for VDAs,
