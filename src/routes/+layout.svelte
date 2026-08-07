@@ -14,7 +14,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { setUnitValue, toggleUnit, unit } from '$lib/stores/unit.svelte';
 	import type { LivePricePayload } from '$lib/types';
-	import { formatUsd } from '$lib/utils/display';
+	import { formatUsd, formatUsdCompact } from '$lib/utils/display';
 	import { formatInrCompact, formatRateInr } from '$lib/utils/money';
 	import { formatRelative } from '$lib/utils/time';
 	import type { Snippet } from 'svelte';
@@ -207,7 +207,9 @@
 			aria-label="live BTC price — click to refresh"
 		>
 			<span class="size-1.5 shrink-0 rounded-full {DOT[priceStatus]}" aria-hidden="true"></span>
-			<span class="truncate sm:hidden">{formatInrCompact(Math.round(price.btcInr * 100))}</span>
+			<span class="truncate sm:hidden">
+				{formatInrCompact(Math.round(price.btcInr * 100))} · {formatUsdCompact(price.btcUsd)}
+			</span>
 			<span class="hidden truncate sm:inline">
 				{formatRateInr(price.btcInr)} · {formatUsd(price.btcUsd)}
 			</span>
