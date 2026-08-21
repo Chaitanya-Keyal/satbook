@@ -4,6 +4,7 @@
 	import './layout.css';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import ArrowRightLeft from '@lucide/svelte/icons/arrow-right-left';
 	import LayoutDashboard from '@lucide/svelte/icons/layout-dashboard';
 	import List from '@lucide/svelte/icons/list';
 	import LogOut from '@lucide/svelte/icons/log-out';
@@ -90,7 +91,13 @@
 	let gTimer: ReturnType<typeof setTimeout> | undefined;
 	let cheatsheetOpen = $state(false);
 
-	const GOTO: Record<string, string> = { d: '/', t: '/tx', w: '/wallets', x: '/tax' };
+	const GOTO: Record<string, string> = {
+		d: '/',
+		t: '/tx',
+		w: '/wallets',
+		x: '/tax',
+		c: '/convert'
+	};
 
 	function isEditable(el: EventTarget | null): boolean {
 		return (
@@ -158,28 +165,54 @@
 
 	// --- nav -----------------------------------------------------------------
 
+	// `tab: true` items fill the mobile bottom bar (four, around the + button);
+	// the rest become icon links in the mobile top bar. The rail shows them all.
 	const NAV = [
-		{ href: '/', label: 'Dashboard', icon: LayoutDashboard, match: (p: string) => p === '/' },
+		{
+			href: '/',
+			label: 'Dashboard',
+			icon: LayoutDashboard,
+			tab: true,
+			match: (p: string) => p === '/'
+		},
 		{
 			href: '/tx',
 			label: 'Transactions',
 			icon: List,
+			tab: true,
 			match: (p: string) => p === '/tx' || p.startsWith('/tx/')
 		},
 		{
 			href: '/wallets',
 			label: 'Wallets',
 			icon: Wallet,
+			tab: true,
 			match: (p: string) => p.startsWith('/wallets')
 		},
-		{ href: '/tax', label: 'Tax', icon: Percent, match: (p: string) => p.startsWith('/tax') },
+		{
+			href: '/tax',
+			label: 'Tax',
+			icon: Percent,
+			tab: true,
+			match: (p: string) => p.startsWith('/tax')
+		},
+		{
+			href: '/convert',
+			label: 'Convert',
+			icon: ArrowRightLeft,
+			tab: false,
+			match: (p: string) => p.startsWith('/convert')
+		},
 		{
 			href: '/settings',
 			label: 'Settings',
 			icon: SettingsIcon,
+			tab: false,
 			match: (p: string) => p.startsWith('/settings')
 		}
 	];
+	const TAB_NAV = NAV.filter((i) => i.tab);
+	const UTILITY_NAV = NAV.filter((i) => !i.tab);
 
 	const SHORTCUTS: [string, string][] = [
 		['n', 'New entry'],
@@ -187,6 +220,7 @@
 		['g t', 'Go to transactions'],
 		['g w', 'Go to wallets'],
 		['g x', 'Go to tax'],
+		['g c', 'Go to converter'],
 		['u', 'Flip sats / BTC'],
 		['/', 'Search ledger (on /tx)'],
 		['?', 'This cheatsheet'],
@@ -308,13 +342,20 @@
 							BTC
 						</button>
 					</div>
-					<a
-						href="/settings"
-						class="rounded-md p-1.5 text-muted transition-colors duration-100 hover:text-text lg:hidden"
-						aria-label="Settings"
-					>
-						<SettingsIcon size={16} strokeWidth={1.5} aria-hidden="true" />
-					</a>
+					{#each UTILITY_NAV as item (item.href)}
+						<a
+							href={item.href}
+							aria-current={item.match(pathname) ? 'page' : undefined}
+							class="rounded-md p-1.5 transition-colors duration-100 hover:text-text lg:hidden {item.match(
+								pathname
+							)
+								? 'text-text'
+								: 'text-muted'}"
+							aria-label={item.label}
+						>
+							<item.icon size={16} strokeWidth={1.5} aria-hidden="true" />
+						</a>
+					{/each}
 					<form method="POST" action="/logout">
 						<button
 							type="submit"
@@ -339,7 +380,7 @@
 			aria-label="primary"
 		>
 			<div class="grid h-14 grid-cols-5 items-center">
-				{#each [NAV[0], NAV[1]] as item (item.href)}
+				{#each TAB_NAV.slice(0, 2) as item (item.href)}
 					<a
 						href={item.href}
 						aria-current={item.match(pathname) ? 'page' : undefined}
@@ -362,7 +403,7 @@
 						<Plus size={22} strokeWidth={2} aria-hidden="true" />
 					</a>
 				</div>
-				{#each [NAV[2], NAV[3]] as item (item.href)}
+				{#each TAB_NAV.slice(2) as item (item.href)}
 					<a
 						href={item.href}
 						aria-current={item.match(pathname) ? 'page' : undefined}
