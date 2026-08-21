@@ -112,6 +112,11 @@
 	let usdRaw = $state('');
 	let inrFocused = $state(false);
 	let usdFocused = $state(false);
+	// Edited-since-focus. Without this, blurring an untouched derived field
+	// would re-anchor onto its own rounded display text and the other fields
+	// would drift a digit every time focus moved between them.
+	let inrDirty = $state(false);
+	let usdDirty = $state(false);
 
 	// Echo the canonical value whenever this field is not the one being typed in.
 	$effect(() => {
@@ -125,8 +130,13 @@
 
 	function onFiatInput(field: 'inr' | 'usd', e: Event) {
 		const raw = (e.currentTarget as HTMLInputElement).value;
-		if (field === 'inr') inrRaw = raw;
-		else usdRaw = raw;
+		if (field === 'inr') {
+			inrRaw = raw;
+			inrDirty = true;
+		} else {
+			usdRaw = raw;
+			usdDirty = true;
+		}
 		anchor = field;
 		const minor = parseFiatText(raw);
 		amount = minor == null ? null : minor / 100;
@@ -135,18 +145,26 @@
 	// Blur accepts the same k / L shorthand as the entry form ('1.2L' → 120000).
 	function onFiatBlur(field: 'inr' | 'usd') {
 		const raw = field === 'inr' ? inrRaw : usdRaw;
-		const shorthand = parseFiatShorthand(raw);
+		const dirty = field === 'inr' ? inrDirty : usdDirty;
+		const shorthand = dirty ? parseFiatShorthand(raw) : null;
 		if (shorthand != null && raw.trim() !== '') {
 			anchor = field;
 			amount = shorthand;
 		}
-		if (field === 'inr') inrFocused = false;
-		else usdFocused = false;
+		if (field === 'inr') {
+			inrFocused = false;
+			inrDirty = false;
+		} else {
+			usdFocused = false;
+			usdDirty = false;
+		}
 	}
 
 	let btcInrRaw = $state('');
+	let btcUsdRaw = $state('');
 	let usdInrRaw = $state('');
 	let btcInrFocused = $state(false);
+	let btcUsdFocused = $state(false);
 	let usdInrFocused = $state(false);
 
 	// Grouped while idle for legibility; the parser strips separators on input.
@@ -155,20 +173,30 @@
 		if (!btcInrFocused) btcInrRaw = btcInr == null ? '' : indianGroup(String(Math.round(btcInr)));
 	});
 	$effect(() => {
+		void btcUsd;
+		if (!btcUsdFocused) btcUsdRaw = fiatText(btcUsd, false);
+	});
+	$effect(() => {
 		void usdInr;
 		if (!usdInrFocused) usdInrRaw = usdInr == null ? '' : usdInr.toFixed(2);
 	});
 
-	function onRateInput(which: 'btcInr' | 'usdInr', e: Event) {
+	function onRateInput(which: 'btcInr' | 'btcUsd' | 'usdInr', e: Event) {
 		const raw = (e.currentTarget as HTMLInputElement).value;
 		const parsed = parseRateText(raw);
 		ratesTouched = true;
 		if (which === 'btcInr') {
 			btcInrRaw = raw;
 			btcInr = parsed;
-		} else {
+		} else if (which === 'usdInr') {
 			usdInrRaw = raw;
 			usdInr = parsed;
+		} else {
+			// Only two of the three rates are independent: a typed dollar price
+			// keeps the FX rate and moves the rupee price.
+			btcUsdRaw = raw;
+			if (parsed != null && usdInr != null && usdInr > 0) btcInr = parsed * usdInr;
+			else if (parsed == null) btcInr = null;
 		}
 	}
 
@@ -223,7 +251,10 @@
 						spellcheck="false"
 						class="{inputBase} pr-8 pl-7 {isDerived('inr') ? 'derived' : ''}"
 						oninput={(e) => onFiatInput('inr', e)}
-						onfocus={() => (inrFocused = true)}
+						onfocus={() => {
+							inrFocused = true;
+							inrDirty = false;
+						}}
 						onblur={() => onFiatBlur('inr')}
 					/>
 					{#if isDerived('inr')}
@@ -253,7 +284,10 @@
 						spellcheck="false"
 						class="{inputBase} pr-8 pl-7 {isDerived('usd') ? 'derived' : ''}"
 						oninput={(e) => onFiatInput('usd', e)}
-						onfocus={() => (usdFocused = true)}
+						onfocus={() => {
+							usdFocused = true;
+							usdDirty = false;
+						}}
 						onblur={() => onFiatBlur('usd')}
 					/>
 					{#if isDerived('usd')}
@@ -298,7 +332,7 @@
 			</div>
 		</div>
 
-		<div class="mt-3 grid grid-cols-2 gap-3">
+		<div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
 			<div>
 				<label class={labelCls} for="conv-rate-btc">1 BTC in ₹</label>
 				<div class="relative mt-1">
@@ -323,6 +357,29 @@
 				</div>
 			</div>
 			<div>
+				<label class={labelCls} for="conv-rate-btcusd">1 BTC in $</label>
+				<div class="relative mt-1">
+					<span
+						class="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 num text-[12px] text-muted"
+					>
+						$
+					</span>
+					<input
+						id="conv-rate-btcusd"
+						type="text"
+						value={btcUsdRaw}
+						placeholder="0"
+						inputmode="decimal"
+						autocomplete="off"
+						spellcheck="false"
+						class="{inputBase} pr-2.5 pl-7"
+						oninput={(e) => onRateInput('btcUsd', e)}
+						onfocus={() => (btcUsdFocused = true)}
+						onblur={() => (btcUsdFocused = false)}
+					/>
+				</div>
+			</div>
+			<div class="col-span-2 sm:col-span-1">
 				<label class={labelCls} for="conv-rate-usd">1 USD in ₹</label>
 				<div class="relative mt-1">
 					<span
@@ -347,19 +404,16 @@
 			</div>
 		</div>
 
-		<div class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 num text-[11px] text-muted">
-			{#if btcUsd != null}
-				<span>1 BTC = ${fiatText(btcUsd, false)}</span>
-			{/if}
-			{#if ratesTouched && price}
+		{#if ratesTouched && price}
+			<div class="mt-3">
 				<button
 					type="button"
-					class="underline decoration-border underline-offset-2 transition-colors duration-100 hover:text-text"
+					class="num text-[11px] text-muted underline decoration-border underline-offset-2 transition-colors duration-100 hover:text-text"
 					onclick={useLiveRates}
 				>
 					Use live rates
 				</button>
-			{/if}
-		</div>
+			</div>
+		{/if}
 	</section>
 </div>
