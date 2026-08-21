@@ -19,7 +19,6 @@ export function signedAmount(sats: number, unit: Unit): { text: string; cls: str
 	return { text, cls: sats > 0 ? 'text-gain' : sats < 0 ? 'text-loss' : '' };
 }
 
-/** 61240.4 → '$61,240' (whole dollars, western grouping; true minus when negative). */
 /** Compact USD for tight spaces (mobile ticker): 63488 → '$63.5k'. */
 export function formatUsdCompact(usd: number): string {
 	const sign = usd < 0 ? '−' : '';
@@ -29,6 +28,7 @@ export function formatUsdCompact(usd: number): string {
 	return `${sign}$${(k >= 100 ? Math.round(k) : Math.round(k * 10) / 10).toString()}k`;
 }
 
+/** 61240.4 → '$61,240' (whole dollars, western grouping; true minus when negative). */
 export function formatUsd(usd: number): string {
 	const sign = usd < 0 ? '−' : '';
 	const grouped = Math.round(Math.abs(usd))
