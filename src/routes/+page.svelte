@@ -43,8 +43,11 @@
 	const breakEvenInr = $derived(
 		holdings > 0 && invested > 0 ? mulDivRound(invested, 1_000_000, holdings) : null
 	);
+	// Real ECB rate, not one implied from two BTC prices — see rates/index.ts.
 	const breakEvenUsd = $derived(
-		breakEvenInr != null && p ? breakEvenInr * (p.btcUsd / p.btcInr) : null
+		breakEvenInr != null && data.usdInr != null && data.usdInr > 0
+			? breakEvenInr / data.usdInr
+			: null
 	);
 	// Gauge maps ±50% around break-even onto the line; dot clamped near edges.
 	const gaugePos = $derived.by(() => {

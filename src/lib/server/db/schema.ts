@@ -91,7 +91,7 @@ export const priceCandles = sqliteTable(
 		interval: text('interval', { enum: ['1h', '1d'] }).notNull(),
 		periodStart: integer('period_start').notNull(), // unix sec UTC, aligned to interval
 		close: real('close').notNull(), // INR per BTC
-		source: text('source').notNull(), // 'coindcx' | 'coinbase' | 'coingecko'
+		source: text('source').notNull(), // 'binance' | 'coinbase' | 'coingecko'
 		fetchedAt: integer('fetched_at').notNull()
 	},
 	(t) => [primaryKey({ columns: [t.pair, t.interval, t.periodStart] })]

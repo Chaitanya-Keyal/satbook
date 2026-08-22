@@ -26,13 +26,15 @@
 
 	// --- rates ---------------------------------------------------------------
 
-	const liveUsdInr = (p: LivePricePayload | null) =>
-		p && p.btcUsd > 0 ? p.btcInr / p.btcUsd : null;
+	// The ECB reference rate when available; only if that is missing do we fall
+	// back to the rate implied by the two BTC quotes.
+	const liveUsdInr = (p: LivePricePayload | null, fx: number | null) =>
+		fx != null && fx > 0 ? fx : p && p.btcUsd > 0 ? p.btcInr / p.btcUsd : null;
 
 	// svelte-ignore state_referenced_locally
 	let btcInr = $state<number | null>(data.price?.btcInr ?? null);
 	// svelte-ignore state_referenced_locally
-	let usdInr = $state<number | null>(liveUsdInr(data.price));
+	let usdInr = $state<number | null>(liveUsdInr(data.price, data.usdInr));
 	let ratesTouched = $state(false);
 
 	const btcUsd = $derived(btcInr != null && usdInr != null && usdInr > 0 ? btcInr / usdInr : null);
@@ -41,7 +43,7 @@
 	function useLiveRates() {
 		if (!price) return;
 		btcInr = price.btcInr;
-		usdInr = liveUsdInr(price);
+		usdInr = liveUsdInr(price, data.usdInr);
 		ratesTouched = false;
 	}
 

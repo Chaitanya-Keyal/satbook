@@ -51,7 +51,7 @@ function insertCandle(
 	interval: '1h' | '1d',
 	periodStart: number,
 	close: number,
-	source = 'coindcx'
+	source = 'binance'
 ) {
 	db.insert(schema.priceCandles)
 		.values({ pair: 'BTC_INR', interval, periodStart, close, source, fetchedAt: now() })
@@ -64,15 +64,29 @@ function insertLive(btcInr: number, btcUsd: number, fetchedAt: number) {
 		.run();
 }
 
-/** {time (ms), close} in the newest-first shape the CoinDCX candles API returns. */
-const dcxCandle = (periodStartSec: number, close: number) => ({
-	open: close - 10,
-	high: close + 10,
-	low: close - 20,
-	close,
-	volume: 1.5,
-	time: periodStartSec * 1000
-});
+/** A Binance kline row: [openTime(ms), open, high, low, close, volume, ...]. */
+const kline = (periodStartSec: number, closeUsd: number) => [
+	periodStartSec * 1000,
+	String(closeUsd - 10),
+	String(closeUsd + 10),
+	String(closeUsd - 20),
+	String(closeUsd),
+	'1.5',
+	periodStartSec * 1000 + 3_599_999
+];
+
+/** Every INR figure below is a USD price × this stubbed ECB rate. */
+const FX = 80;
+/** Serves both frankfurter shapes: single date ({INR}) and range ({date: {INR}}). */
+const routeFx = (rate = FX) =>
+	route('frankfurter.dev/v1/', (url) => {
+		if (!url.includes('..')) return json({ base: 'USD', rates: { INR: rate } });
+		const [from, to] = url.split('/v1/')[1].split('?')[0].split('..');
+		const rates: Record<string, { INR: number }> = {};
+		for (let d = Date.parse(from); d <= Date.parse(to); d += DAY * 1000)
+			rates[new Date(d).toISOString().slice(0, 10)] = { INR: rate };
+		return json({ base: 'USD', rates });
+	});
 
 beforeEach(() => {
 	db.delete(schema.priceCandles).run();
@@ -105,7 +119,7 @@ describe('getBtcInrAt', () => {
 		const ts = now() - DAY;
 		insertCandle('1h', floorHour(ts), 49_99_000);
 		const r = await rates.getBtcInrAt(ts);
-		expect(r).toEqual({ rate: 49_99_000, source: 'coindcx-1h' });
+		expect(r).toEqual({ rate: 49_99_000, source: 'binance-1h' });
 		expect(calls.length).toBe(0);
 	});
 
@@ -113,7 +127,7 @@ describe('getBtcInrAt', () => {
 		const ts = now() - 2 * DAY;
 		insertCandle('1h', floorHour(ts) - 2 * HOUR, 48_88_000);
 		const r = await rates.getBtcInrAt(ts);
-		expect(r).toEqual({ rate: 48_88_000, source: 'coindcx-1h' });
+		expect(r).toEqual({ rate: 48_88_000, source: 'binance-1h' });
 		expect(calls.length).toBe(0);
 	});
 
@@ -128,40 +142,50 @@ describe('getBtcInrAt', () => {
 		expect(callsTo('interval=1h')).toBe(1);
 	});
 
-	test('CoinDCX 1h fetch: uses latest candle ≤ ts, persists ONLY elapsed periods', async () => {
+	test('Binance 1h: latest kline ≤ ts × ECB FX, persists ONLY elapsed periods', async () => {
 		const ts = now() - 2 * HOUR;
 		const h = floorHour(ts);
 		const currentHour = floorHour(now());
+		routeFx();
 		route('interval=1h', () =>
-			json([
-				dcxCandle(currentHour, 52_10_000),
-				dcxCandle(h, 52_00_000),
-				dcxCandle(h - HOUR, 51_90_000)
-			])
+			json([kline(h - HOUR, 64_875), kline(h, 65_000), kline(currentHour, 65_125)])
 		);
 		const r = await rates.getBtcInrAt(ts);
-		expect(r).toEqual({ rate: 52_00_000, source: 'coindcx-1h' });
-		expect(callsTo('public.coindcx.com/market_data/candles')).toBe(1);
+		expect(r).toEqual({ rate: 65_000 * FX, source: 'binance-1h' });
+		expect(callsTo('api.binance.com/api/v3/klines')).toBe(1);
 
 		const persisted = db.select().from(schema.priceCandles).all();
 		const starts = persisted.map((c) => c.periodStart).sort();
 		expect(starts).toEqual([h - HOUR, h]); // current-hour candle is not final → not stored
+		// Stored in INR at that date's reference rate.
+		expect(persisted.find((c) => c.periodStart === h)!.close).toBeCloseTo(65_000 * FX);
 
 		// Immutable read-through: the same lookup now hits the cache, no refetch.
 		calls = [];
 		const r2 = await rates.getBtcInrAt(ts);
-		expect(r2).toEqual({ rate: 52_00_000, source: 'coindcx-1h' });
+		expect(r2).toEqual({ rate: 65_000 * FX, source: 'binance-1h' });
 		expect(calls.length).toBe(0);
 	});
 
-	test('CoinDCX down → Coinbase daily, persisted as an elapsed 1d candle', async () => {
-		const ts = now() - 10 * DAY;
-		timeout('public.coindcx.com');
-		route('api.coinbase.com/v2/prices/BTC-INR/spot', () =>
-			json({ data: { amount: '4500000.12' } })
-		);
+	test('no FX for the date → the USD candle is not usable, falls through', async () => {
+		const ts = now() - 2 * HOUR;
+		route('interval=1h', () => json([kline(floorHour(ts), 65_000)]));
+		fail('frankfurter.dev');
+		fail('cdn.jsdelivr.net');
+		fail('api.coinbase.com');
+		fail('api.coingecko.com');
 		const r = await rates.getBtcInrAt(ts);
-		expect(r).toEqual({ rate: 4500000.12, source: 'coinbase-1d' });
+		expect(r).toBeNull();
+		expect(db.select().from(schema.priceCandles).all()).toHaveLength(0);
+	});
+
+	test('Binance down → Coinbase daily USD × FX, persisted as an elapsed 1d candle', async () => {
+		const ts = now() - 10 * DAY;
+		timeout('api.binance.com');
+		routeFx();
+		route('api.coinbase.com/v2/prices/BTC-USD/spot', () => json({ data: { amount: '56250.0' } }));
+		const r = await rates.getBtcInrAt(ts);
+		expect(r).toEqual({ rate: 56_250 * FX, source: 'coinbase-1d' });
 		expect(callsTo(`spot?date=${utc(ts)}`)).toBe(1);
 
 		const persisted = db.select().from(schema.priceCandles).all();
@@ -169,7 +193,7 @@ describe('getBtcInrAt', () => {
 		expect(persisted[0]).toMatchObject({
 			interval: '1d',
 			periodStart: floorDay(ts),
-			close: 4500000.12,
+			close: 56_250 * FX,
 			source: 'coinbase'
 		});
 	});
@@ -177,7 +201,7 @@ describe('getBtcInrAt', () => {
 	test('cached 1d candle short-circuits Coinbase', async () => {
 		const ts = now() - 10 * DAY;
 		insertCandle('1d', floorDay(ts), 4400000, 'coinbase');
-		timeout('public.coindcx.com');
+		timeout('api.binance.com');
 		const r = await rates.getBtcInrAt(ts);
 		expect(r).toEqual({ rate: 4400000, source: 'coinbase-1d' });
 		expect(callsTo('api.coinbase.com')).toBe(0);
@@ -185,7 +209,7 @@ describe('getBtcInrAt', () => {
 
 	test('CoinGecko history is the last fallback, DD-MM-YYYY date format', async () => {
 		const ts = now() - 30 * DAY;
-		timeout('public.coindcx.com');
+		timeout('api.binance.com');
 		fail('api.coinbase.com');
 		route('coins/bitcoin/history', () =>
 			json({ market_data: { current_price: { inr: 3999999 } } })
@@ -198,7 +222,7 @@ describe('getBtcInrAt', () => {
 
 	test('CoinGecko NOT attempted beyond 365d; resolves to null', async () => {
 		const ts = now() - 400 * DAY;
-		timeout('public.coindcx.com');
+		timeout('api.binance.com');
 		fail('api.coinbase.com');
 		const r = await rates.getBtcInrAt(ts);
 		expect(r).toBeNull();
@@ -233,43 +257,60 @@ describe('getLivePrice', () => {
 		expect(row[0].btcInr).toBe(52_50_000);
 	});
 
-	test('CoinGecko down → decoupled CoinDCX INR + Binance USD legs', async () => {
+	test('CoinGecko down → Binance USD × ECB FX (one global convention)', async () => {
 		fail('api.coingecko.com');
-		route('api.coindcx.com/exchange/ticker', () =>
-			json([
-				{ market: 'ETHINR', last_price: '250000' },
-				{ market: 'BTCINR', last_price: '5150000.0' }
-			])
-		);
-		route('api.binance.com', () => json({ price: '61500.5' }));
-		const p = await rates.getLivePrice();
-		expect(p).toMatchObject({
-			btcInr: 5150000,
-			btcUsd: 61500.5,
-			source: 'coindcx+binance',
-			stale: false
-		});
-	});
-
-	test('Binance down → tertiary USD = btcInr ÷ frankfurter USD/INR', async () => {
-		fail('api.coingecko.com');
-		route('api.coindcx.com/exchange/ticker', () =>
-			json([{ market: 'BTCINR', last_price: '5280000' }])
-		);
-		timeout('api.binance.com');
+		route('api.binance.com/api/v3/ticker', () => json({ price: '61500.5' }));
 		route('frankfurter.dev/v1/latest', () => json({ base: 'USD', rates: { INR: 88.0 } }));
 		const p = await rates.getLivePrice();
-		expect(p.btcInr).toBe(5280000);
-		expect(p.btcUsd).toBeCloseTo(5280000 / 88.0);
-		expect(p.source).toBe('coindcx+frankfurter');
+		expect(p).toMatchObject({
+			btcInr: 61500.5 * 88.0,
+			btcUsd: 61500.5,
+			source: 'binance+ecb',
+			stale: false
+		});
+		// The implied FX must equal the real one — never an exchange premium.
+		expect(p.btcInr / p.btcUsd).toBeCloseTo(88.0);
+	});
+
+	test('Binance geo-blocked → Coinbase, then Kraken, still × ECB FX', async () => {
+		fail('api.coingecko.com');
+		fail('api.binance.com');
+		route('api.coinbase.com/v2/prices/BTC-USD/spot', () => json({ data: { amount: '61000.25' } }));
+		route('frankfurter.dev/v1/latest', () => json({ base: 'USD', rates: { INR: 90.0 } }));
+		const p = await rates.getLivePrice();
+		expect(p).toMatchObject({ btcUsd: 61000.25, btcInr: 61000.25 * 90.0, source: 'coinbase+ecb' });
+
+		db.delete(schema.livePrice).run();
+		rates._resetMemoryCaches();
+		calls = [];
+		routes = [];
+		fail('api.coingecko.com');
+		fail('api.binance.com');
+		fail('api.coinbase.com');
+		route('api.kraken.com', () => json({ result: { XXBTZUSD: { c: ['60500.5', '0.01'] } } }));
+		route('frankfurter.dev/v1/latest', () => json({ base: 'USD', rates: { INR: 90.0 } }));
+		const k = await rates.getLivePrice();
+		expect(k).toMatchObject({ btcUsd: 60500.5, btcInr: 60500.5 * 90.0, source: 'kraken+ecb' });
+	});
+
+	test('no FX → no INR leg can be trusted, so the refresh fails', async () => {
+		const fetchedAt = now() - 7200;
+		insertLive(48_00_000, 58000, fetchedAt);
+		fail('api.coingecko.com');
+		route('api.binance.com/api/v3/ticker', () => json({ price: '61500.5' }));
+		fail('frankfurter.dev');
+		fail('cdn.jsdelivr.net');
+		const p = await rates.getLivePrice();
+		expect(p).toMatchObject({ btcInr: 48_00_000, fetchedAt, stale: true });
 	});
 
 	test('total provider failure → stale row flagged stale: true', async () => {
 		const fetchedAt = now() - 7200;
 		insertLive(48_00_000, 58000, fetchedAt);
 		fail('api.coingecko.com');
-		timeout('api.coindcx.com');
 		timeout('api.binance.com');
+		fail('api.coinbase.com');
+		fail('api.kraken.com');
 		fail('frankfurter.dev');
 		const p = await rates.getLivePrice();
 		expect(p).toMatchObject({ btcInr: 48_00_000, fetchedAt, stale: true });
@@ -277,8 +318,9 @@ describe('getLivePrice', () => {
 
 	test('no row at all + total failure → throws', async () => {
 		fail('api.coingecko.com');
-		timeout('api.coindcx.com');
 		timeout('api.binance.com');
+		fail('api.coinbase.com');
+		fail('api.kraken.com');
 		fail('frankfurter.dev');
 		await expect(rates.getLivePrice()).rejects.toThrow(/live price unavailable/);
 	});
@@ -374,31 +416,54 @@ describe('getFxToInrAt', () => {
 // ---------------------------------------------------------------------------
 
 describe('daily series', () => {
-	test('backfills missing days, persists only elapsed, reports backfilling: false when done', async () => {
+	test('backfills missing days in INR, persists only elapsed, then backfilling: false', async () => {
 		const yesterday = floorDay(now()) - DAY;
 		const fromTs = yesterday - 4 * DAY;
 		insertCandle('1d', yesterday - 3 * DAY, 4000003);
 		route('interval=1d', () => {
 			// Provider returns the whole range including TODAY's unfinished candle.
-			const candles = [dcxCandle(floorDay(now()), 5000000)];
-			for (let i = 0; i < 5; i++) candles.push(dcxCandle(yesterday - i * DAY, 4000000 + i));
+			const candles = [kline(floorDay(now()), 62_500)];
+			for (let i = 0; i < 5; i++) candles.push(kline(yesterday - i * DAY, 50_000 + i));
 			return json(candles);
 		});
+		routeFx();
 
 		const r = await rates.ensureDailySeries(fromTs);
 		expect(r).toEqual({ backfilling: false });
 
 		const closes = rates.getDailyCloses(fromTs, now());
 		expect(closes.size).toBe(5); // today's candle was not persisted
-		expect(closes.get(utc(yesterday))).toBe(4000000);
+		expect(closes.get(utc(yesterday))).toBeCloseTo(50_000 * FX);
 		expect(closes.get(utc(floorDay(now())))).toBeUndefined();
 		expect(closes.get(utc(yesterday - 3 * DAY))).toBe(4000003); // pre-existing row untouched
 	});
 
-	test('fetch failure → backfilling: true, no throw', async () => {
-		fail('public.coindcx.com');
+	test('weekends forward-fill the last business-day FX rate', async () => {
+		// ECB publishes business days only; the range response omits the weekend.
+		const yesterday = floorDay(now()) - DAY;
+		const fromTs = yesterday - DAY;
+		route('interval=1d', () => json([kline(yesterday - DAY, 50_000), kline(yesterday, 51_000)]));
+		route('frankfurter.dev/v1/', () =>
+			json({ base: 'USD', rates: { [utc(yesterday - DAY)]: { INR: 90 } } })
+		);
+		const r = await rates.ensureDailySeries(fromTs);
+		expect(r).toEqual({ backfilling: false });
+		const closes = rates.getDailyCloses(fromTs, now());
+		expect(closes.get(utc(yesterday))).toBeCloseTo(51_000 * 90); // carried forward
+	});
+
+	test('price fetch failure → backfilling: true, no throw', async () => {
+		fail('api.binance.com');
 		const r = await rates.ensureDailySeries(now() - 5 * DAY);
 		expect(r).toEqual({ backfilling: true });
+	});
+
+	test('FX fetch failure → backfilling: true, nothing persisted', async () => {
+		route('interval=1d', () => json([kline(floorDay(now()) - DAY, 50_000)]));
+		fail('frankfurter.dev');
+		const r = await rates.ensureDailySeries(now() - 5 * DAY);
+		expect(r).toEqual({ backfilling: true });
+		expect(db.select().from(schema.priceCandles).all()).toHaveLength(0);
 	});
 
 	test('nothing missing → backfilling: false with zero fetches', async () => {

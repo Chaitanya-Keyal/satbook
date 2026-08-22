@@ -1,9 +1,12 @@
-// Coinbase daily spot: historical fallback for any date (pre-2022 CoinDCX gap).
+// Coinbase spot in USD: works from every region and serves any past date at
+// daily granularity, making it the universal fallback for both the live price
+// and historical lookups.
 
-/** date is 'YYYY-MM-DD' (UTC). Returns INR per BTC for that date. */
-export async function fetchDailySpot(date: string): Promise<number | null> {
+/** date is 'YYYY-MM-DD' (UTC) or 'spot' for the current price. USD per BTC. */
+export async function fetchBtcUsd(date?: string): Promise<number | null> {
 	try {
-		const res = await fetch(`https://api.coinbase.com/v2/prices/BTC-INR/spot?date=${date}`, {
+		const q = date ? `?date=${date}` : '';
+		const res = await fetch(`https://api.coinbase.com/v2/prices/BTC-USD/spot${q}`, {
 			signal: AbortSignal.timeout(5000)
 		});
 		if (!res.ok) return null;

@@ -1,15 +1,20 @@
-// Rate service facade. Resolution strategies are specified in
-// docs/design-architecture.md §5 — that section is authoritative.
+// Rate service facade.
+//
+// ONE MARKET CONVENTION, EVERYWHERE: every BTC price is a global (US-market)
+// price, and INR is always that USD price × the ECB reference FX rate for the
+// same date. Indian-exchange quotes carry a premium (~3% at the time of
+// writing) — mixing them with global quotes made the implied USD/INR rate, and
+// so every USD-equivalent figure in the app, jump whenever a fallback engaged.
 
 import type { RateSource } from '../../types';
 import { utcDateString } from '../../utils/time';
 import * as cache from './cache';
 import * as binance from './providers/binance';
 import * as coinbase from './providers/coinbase';
-import * as coindcx from './providers/coindcx';
 import * as coingecko from './providers/coingecko';
 import * as fawaz from './providers/fawaz';
 import * as frankfurter from './providers/frankfurter';
+import * as kraken from './providers/kraken';
 
 const HOUR = 3600;
 const DAY = 86400;
@@ -37,7 +42,7 @@ export async function getLivePrice(): Promise<{
 	if (fresh) return { ...fresh, stale: false };
 	if (row) return { ...row, stale: true };
 	throw new Error(
-		'live price unavailable: no cached row and all providers (CoinGecko, CoinDCX, Binance, frankfurter) failed'
+		'live price unavailable: no cached row and all providers (CoinGecko, Binance, Coinbase, Kraken, frankfurter) failed'
 	);
 }
 
@@ -48,21 +53,33 @@ async function refreshLivePrice(now: number): Promise<cache.LiveRow | null> {
 		cache.putLiveRow(row);
 		return row;
 	}
-	// Decoupled fallback legs: INR from CoinDCX, USD from Binance (tertiary:
-	// derive USD from the INR leg via frankfurter USD/INR).
-	const btcInr = await coindcx.fetchTickerBtcInr();
-	if (btcInr == null) return null;
+
+	// Fallback: a global USD price × the latest ECB rate. Never an Indian-market
+	// quote — pairing one with a global USD price fakes a ~3% FX premium.
 	let btcUsd = await binance.fetchBtcUsdt();
-	let source = 'coindcx+binance';
+	let source = 'binance+ecb';
 	if (btcUsd == null) {
-		const usdInr = await frankfurter.fetchFxToInr('USD', 'latest');
-		if (usdInr == null) return null;
-		btcUsd = btcInr / usdInr;
-		source = 'coindcx+frankfurter';
+		btcUsd = await coinbase.fetchBtcUsd();
+		source = 'coinbase+ecb';
 	}
-	const row = { btcInr, btcUsd, source, fetchedAt: now };
+	if (btcUsd == null) {
+		btcUsd = await kraken.fetchBtcUsd();
+		source = 'kraken+ecb';
+	}
+	if (btcUsd == null) return null;
+
+	const usdInr = await frankfurter.fetchFxToInr('USD', 'latest');
+	if (usdInr == null) return null;
+
+	const row = { btcInr: btcUsd * usdInr, btcUsd, source, fetchedAt: now };
 	cache.putLiveRow(row);
 	return row;
+}
+
+/** INR per USD right now (ECB daily reference rate) — the app's one FX truth. */
+export async function getUsdInrNow(): Promise<number | null> {
+	const fx = await getFxToInrAt('USD', cache.nowSec());
+	return fx?.rate ?? null;
 }
 
 // ---------------------------------------------------------------------------
@@ -70,10 +87,16 @@ async function refreshLivePrice(now: number): Promise<cache.LiveRow | null> {
 // ---------------------------------------------------------------------------
 
 const DAILY_SOURCE: Record<string, RateSource> = {
-	coindcx: 'coindcx-1d',
+	binance: 'binance-1d',
 	coinbase: 'coinbase-1d',
 	coingecko: 'coingecko-1d'
 };
+
+/** USD price at `ts` → INR via the ECB rate for that same UTC date. */
+async function toInr(usd: number, ts: number): Promise<number | null> {
+	const fx = await getFxToInrAt('USD', ts);
+	return fx == null ? null : usd * fx.rate;
+}
 
 export async function getBtcInrAt(
 	ts: number
@@ -92,29 +115,47 @@ export async function getBtcInrAt(
 
 	const hour = Math.floor(ts / HOUR) * HOUR;
 	const cached1h = cache.getCandleWalkback('1h', hour, 2);
-	if (cached1h) return { rate: cached1h.close, source: 'coindcx-1h' };
+	if (cached1h) return { rate: cached1h.close, source: 'binance-1h' };
 
-	const fetched = await coindcx.fetchCandles('1h', (ts - 6 * HOUR) * 1000, (ts + HOUR) * 1000);
-	if (fetched && fetched.length > 0) {
-		cache.persistElapsedCandles('1h', 'coindcx', fetched, now);
-		let best: coindcx.CoindcxCandle | null = null;
-		for (const c of fetched) {
+	const klines = await binance.fetchKlines('1h', (ts - 6 * HOUR) * 1000, (ts + HOUR) * 1000);
+	if (klines && klines.length > 0) {
+		let best: binance.UsdCandle | null = null;
+		for (const c of klines) {
 			if (c.periodStart <= ts && (!best || c.periodStart > best.periodStart)) best = c;
 		}
-		if (best) return { rate: best.close, source: 'coindcx-1h' };
+		if (best) {
+			const inr = await toInr(best.close, ts);
+			if (inr != null) {
+				// Persist the whole window in INR at this date's FX (candles within
+				// a few hours share the same daily reference rate).
+				const fx = inr / best.close;
+				cache.persistElapsedCandles(
+					'1h',
+					'binance',
+					klines.map((c) => ({ periodStart: c.periodStart, close: c.close * fx })),
+					now
+				);
+				return { rate: inr, source: 'binance-1h' };
+			}
+		}
 	}
 
 	const day = Math.floor(ts / DAY) * DAY;
 	const cached1d = cache.getCandle('1d', day);
 	if (cached1d)
-		return { rate: cached1d.close, source: DAILY_SOURCE[cached1d.source] ?? 'coindcx-1d' };
+		return { rate: cached1d.close, source: DAILY_SOURCE[cached1d.source] ?? 'coinbase-1d' };
 
-	const spot = await coinbase.fetchDailySpot(utcDateString(ts));
-	if (spot != null) {
-		cache.persistElapsedCandles('1d', 'coinbase', [{ periodStart: day, close: spot }], now);
-		return { rate: spot, source: 'coinbase-1d' };
+	const spotUsd = await coinbase.fetchBtcUsd(utcDateString(ts));
+	if (spotUsd != null) {
+		const inr = await toInr(spotUsd, ts);
+		if (inr != null) {
+			cache.persistElapsedCandles('1d', 'coinbase', [{ periodStart: day, close: inr }], now);
+			return { rate: inr, source: 'coinbase-1d' };
+		}
 	}
 
+	// CoinGecko's INR is its global price converted with its own FX — same
+	// convention, so it is a safe last resort.
 	if (now - ts <= 365 * DAY) {
 		const [y, m, d] = utcDateString(ts).split('-');
 		const inr = await coingecko.fetchHistoryInr(`${d}-${m}-${y}`);
@@ -196,16 +237,47 @@ export async function ensureDailySeries(fromTs: number): Promise<{ backfilling: 
 	for (let i = 0; i < MAX_CHUNKS_PER_CALL && remaining.length > 0; i++) {
 		const chunk = remaining.slice(0, MAX_DAYS_PER_CHUNK);
 		remaining = remaining.slice(chunk.length);
-		const candles = await coindcx.fetchCandles(
+		const candles = await binance.fetchKlines(
 			'1d',
 			chunk[0] * 1000,
 			(chunk[chunk.length - 1] + DAY) * 1000
 		);
-		if (candles == null) {
+		if (candles == null || candles.length === 0) {
 			failed = true;
 			break;
 		}
-		cache.persistElapsedCandles('1d', 'coindcx', candles, now);
+		// One FX call covers the whole span; ECB publishes business days only,
+		// so weekends and holidays carry the previous close forward.
+		const fxByDate = await frankfurter.fetchFxRangeToInr(
+			'USD',
+			utcDateString(chunk[0] - 7 * DAY),
+			utcDateString(chunk[chunk.length - 1])
+		);
+		if (fxByDate == null) {
+			failed = true;
+			break;
+		}
+		const fxDates = [...fxByDate.keys()].sort();
+		const inrCandles: { periodStart: number; close: number }[] = [];
+		for (const c of candles) {
+			const date = utcDateString(c.periodStart);
+			let fx = fxByDate.get(date);
+			if (fx == null) {
+				// forward-fill: the most recent business day at or before `date`
+				let prev: string | undefined;
+				for (const d of fxDates) {
+					if (d <= date) prev = d;
+					else break;
+				}
+				fx = prev == null ? undefined : fxByDate.get(prev);
+			}
+			if (fx != null) inrCandles.push({ periodStart: c.periodStart, close: c.close * fx });
+		}
+		if (inrCandles.length === 0) {
+			failed = true;
+			break;
+		}
+		cache.persistElapsedCandles('1d', 'binance', inrCandles, now);
 	}
 
 	return { backfilling: failed || missingDays(firstDay, lastDay).length > 0 };
