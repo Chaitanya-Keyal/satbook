@@ -6,7 +6,7 @@ export type TxType = 'INCOME' | 'BUY' | 'SELL' | 'SPEND' | 'TRANSFER';
 export type FiatCurrency = 'INR' | 'USD' | 'EUR';
 export type WalletKind = 'hot' | 'cold' | 'exchange';
 export type RateSource =
-	'manual' | 'live' | 'coindcx-1h' | 'coindcx-1d' | 'coinbase-1d' | 'coingecko-1d' | 'sheet-import';
+	'manual' | 'live' | 'binance-1h' | 'binance-1d' | 'coinbase-1d' | 'coingecko-1d' | 'sheet-import';
 
 export interface Wallet {
 	id: number;

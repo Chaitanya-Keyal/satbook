@@ -21,3 +21,35 @@ export async function fetchFxToInr(base: 'USD' | 'EUR', date: string): Promise<n
 	}
 	return null;
 }
+
+/**
+ * Business-day rates for a whole span in one call (chart backfill). Weekends
+ * and holidays are absent from the response — callers forward-fill from the
+ * previous business day. Keys are 'YYYY-MM-DD'.
+ */
+export async function fetchFxRangeToInr(
+	base: 'USD' | 'EUR',
+	from: string,
+	to: string
+): Promise<Map<string, number> | null> {
+	for (let attempt = 0; attempt < 2; attempt++) {
+		try {
+			const res = await fetch(
+				`https://api.frankfurter.dev/v1/${from}..${to}?base=${base}&symbols=INR`,
+				{ signal: AbortSignal.timeout(8000) }
+			);
+			if (res.ok) {
+				const json = (await res.json()) as { rates?: Record<string, { INR?: number }> };
+				const out = new Map<string, number>();
+				for (const [date, r] of Object.entries(json?.rates ?? {})) {
+					if (typeof r?.INR === 'number' && r.INR > 0) out.set(date, r.INR);
+				}
+				return out.size > 0 ? out : null;
+			}
+			if (res.status < 500) return null;
+		} catch {
+			// timeout / network error — retry once
+		}
+	}
+	return null;
+}

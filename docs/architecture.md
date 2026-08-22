@@ -39,13 +39,21 @@ goes through a BigInt `mulDivRound` (paise×sats products overflow
 
 ## External data
 
-| Need | Primary | Fallbacks |
-|---|---|---|
-| Live BTC price (INR + USD, 5-min TTL, fetched on demand) | CoinGecko | CoinDCX (INR) + Binance (USD), then derived USD via ECB FX |
-| Historical BTC/INR at a timestamp | CoinDCX public 1h candles | Coinbase daily spot, CoinGecko (≤365 d) |
-| Daily series for the portfolio chart | CoinDCX 1d candles, backfilled incrementally | CoinGecko market chart |
-| Fiat FX (USD/EUR→INR, current + historical) | frankfurter.dev (ECB) | fawazahmed0 currency-api |
-| Txid lookup (Esplora API dialect) | blockstream.info | mempool.emzy.de, mempool.space |
+| Need                                               | Primary                                     | Fallbacks                               |
+| -------------------------------------------------- | ------------------------------------------- | --------------------------------------- |
+| Live BTC price (USD, 5-min TTL, fetched on demand) | CoinGecko                                   | Binance, Coinbase, Kraken               |
+| Historical BTC price at a timestamp                | Binance 1h klines                           | Coinbase daily spot, CoinGecko (≤365 d) |
+| Daily series for the portfolio chart               | Binance 1d klines, backfilled incrementally | —                                       |
+| USD/INR and EUR/INR (current + historical)         | Frankfurter (ECB, back to 2009)             | fawazahmed0 currency-api                |
+| Txid lookup (Esplora API dialect)                  | blockstream.info                            | mempool.emzy.de, mempool.space          |
+
+**One market convention.** Every BTC price is a global (US-market) quote, and
+every INR figure is that USD price × the ECB reference rate for the same date —
+including the chart, backdated rate lookups, and the USD equivalents on the
+dashboard. Indian-exchange quotes carry a premium (≈3%); mixing them with
+global quotes silently distorted the implied USD/INR rate, so they are not used
+anywhere. ECB publishes business days only: weekend and holiday dates resolve to
+the previous business day.
 
 Historical candles and FX rates are immutable — cached permanently in SQLite,
 never refetched. Only fully-elapsed candle periods are stored. All calls are
@@ -55,7 +63,7 @@ server-side with short timeouts and provider failover.
 
 Single password: argon2id via `Bun.password`, opaque session tokens stored
 only as SHA-256 hashes, sliding 30-day expiry with an absolute 90-day cap.
-The login limiter charges an attempt slot atomically *before* verification
+The login limiter charges an attempt slot atomically _before_ verification
 (burst-proof) and persists across restarts. First boot reads `ADMIN_PASSWORD`
 from the environment, stores the hash, and ignores the variable afterwards —
 remove it from your env file once you've logged in.

@@ -151,11 +151,12 @@
 			'sheet-import': 'imported from sheet',
 			manual: 'manual',
 			live: 'live price',
-			coindcx: 'CoinDCX',
-			'coindcx-1h': 'CoinDCX 1h close',
-			'coindcx-1d': 'CoinDCX daily close',
-			'coindcx+binance': 'CoinDCX + Binance',
-			'coindcx+frankfurter': 'CoinDCX + Frankfurter'
+			binance: 'Binance',
+			'binance-1h': 'Binance 1h close',
+			'binance-1d': 'Binance daily close',
+			'binance+ecb': 'Binance + ECB',
+			'coinbase+ecb': 'Coinbase + ECB',
+			'kraken+ecb': 'Kraken + ECB'
 		};
 		return KNOWN[slug] ?? slug.replaceAll('-', ' ');
 	}

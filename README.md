@@ -1,6 +1,6 @@
 # satbook
 
-*a self-hosted passbook for your sats.*
+_a self-hosted passbook for your sats._
 
 Single-user Bitcoin portfolio tracker and India VDA tax engine. Log every
 income, buy, sell, spend, and self-transfer across your wallets; see holdings,
@@ -22,7 +22,7 @@ See [docs/architecture.md](docs/architecture.md).
   a block explorer; backdated entries auto-fetch the historical BTC/INR (and
   USD/EUR→INR) rate; a live FIFO preview shows the taxable gain before you save
   a disposal.
-- **Exchange buys** — one entry records a purchase on an exchange *and* the
+- **Exchange buys** — one entry records a purchase on an exchange _and_ the
   delayed withdrawal to self-custody (with its txid), matching how Indian
   exchanges actually pay out.
 - **Wallets** — per-wallet balances, transfer history with network fees, saved

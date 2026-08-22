@@ -1,6 +1,6 @@
 import { db, schema } from '$lib/server/db';
 import { getLedger, getPortfolio } from '$lib/server/ledger';
-import { getLivePrice } from '$lib/server/rates';
+import { getLivePrice, getUsdInrNow } from '$lib/server/rates';
 import type { LivePricePayload, TxType } from '$lib/types';
 import { fyOf } from '$lib/utils/fy';
 import type { PageServerLoad } from './$types';
@@ -28,6 +28,15 @@ export const load: PageServerLoad = async () => {
 		price = await getLivePrice();
 	} catch {
 		price = null;
+	}
+
+	// The USD equivalent of an INR figure uses the real ECB rate — never a rate
+	// implied by dividing two BTC prices, which drifts if they ever disagree.
+	let usdInr: number | null = null;
+	try {
+		usdInr = await getUsdInrNow();
+	} catch {
+		usdInr = null;
 	}
 
 	const walletRows = db.select().from(schema.wallets).all();
@@ -67,6 +76,7 @@ export const load: PageServerLoad = async () => {
 		netInvestedMinor: portfolio.netInvestedMinor,
 		wallets,
 		price,
+		usdInr,
 		recent,
 		totalTx: ledger.length,
 		txCount: valueTxs.length,

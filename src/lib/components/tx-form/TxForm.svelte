@@ -302,10 +302,10 @@
 		switch (src) {
 			case 'live':
 				return 'live price';
-			case 'coindcx-1h':
-				return 'CoinDCX 1h close';
-			case 'coindcx-1d':
-				return 'CoinDCX 1d close';
+			case 'binance-1h':
+				return 'Binance 1h close';
+			case 'binance-1d':
+				return 'Binance 1d close';
 			case 'coinbase-1d':
 				return 'Coinbase daily close';
 			case 'coingecko-1d':
@@ -346,10 +346,10 @@
 		switch (src) {
 			case 'live':
 				return 'live price';
-			case 'coindcx-1h':
-				return `CoinDCX 1h close · ${formatIstFull(forTs)}`;
-			case 'coindcx-1d':
-				return `CoinDCX 1d close · ${formatIstDateShort(forTs)}`;
+			case 'binance-1h':
+				return `Binance 1h close · ${formatIstFull(forTs)}`;
+			case 'binance-1d':
+				return `Binance 1d close · ${formatIstDateShort(forTs)}`;
 			case 'coinbase-1d':
 				return `Coinbase daily · ${formatIstDateShort(forTs)}`;
 			case 'coingecko-1d':
