@@ -17,7 +17,7 @@
 // both cases. feeInrValueMinor is backfilled pro-rata as informational FMV.
 
 import { eq } from 'drizzle-orm';
-import { mulDivRound } from '../src/lib/utils/money';
+import { mulDivRound, SATS_PER_BTC } from '../src/lib/utils/money';
 
 const COMMIT = process.argv.includes('--commit');
 
@@ -39,6 +39,7 @@ async function main() {
 		why: string;
 	}[] = [];
 	const tsFixes: { id: number; ts: number; why: string }[] = [];
+	const fmvFixes: { id: number; feeInrValueMinor: number; why: string }[] = [];
 	const notes: string[] = [];
 	const TS_TOLERANCE_SEC = 120;
 
@@ -120,18 +121,45 @@ async function main() {
 		}
 	}
 
+	// Network-fee fair values are display-only, but they should still reflect the
+	// app's current market convention — recompute any that drifted.
+	const { getBtcInrAt } = await import('../src/lib/server/rates');
+	for (const r of rows) {
+		if (r.feeSats <= 0) continue;
+		const ts = tsFixes.find((t) => t.id === r.id)?.ts ?? r.ts;
+		const rate = await getBtcInrAt(ts).catch(() => null);
+		if (rate == null) {
+			notes.push(`#${r.id} ${r.type}: no rate for the fee FMV — left as is`);
+			continue;
+		}
+		const fmv = mulDivRound(Math.round(rate.rate * 100), r.feeSats, SATS_PER_BTC);
+		if (r.feeInrValueMinor == null || Math.abs(fmv - r.feeInrValueMinor) > 1) {
+			fmvFixes.push({
+				id: r.id,
+				feeInrValueMinor: fmv,
+				why: `fee FMV ${r.feeInrValueMinor ?? 'null'} to ${fmv} paise (${rate.source})`
+			});
+		}
+	}
+
 	console.log(
-		`\n${COMMIT ? 'COMMIT' : 'DRY RUN'} — ${updates.length} fee split(s), ${tsFixes.length} timestamp fix(es)\n`
+		`\n${COMMIT ? 'COMMIT' : 'DRY RUN'} — ${updates.length} fee split(s), ${tsFixes.length} timestamp fix(es), ${fmvFixes.length} fee FMV refresh(es)\n`
 	);
 	for (const u of updates)
 		console.log(`  #${u.id}: amount to ${u.amountSats}, fee to ${u.feeSats} (${u.why})`);
 	for (const t of tsFixes) console.log(`  #${t.id}: ts to ${t.ts} (${t.why})`);
+	for (const f of fmvFixes) console.log(`  #${f.id}: ${f.why}`);
 	console.log();
 	for (const n of notes) console.log(`  ${n}`);
 
 	const before = computePortfolio(getLedger());
 	if (COMMIT) {
 		db.transaction(() => {
+			for (const f of fmvFixes)
+				db.update(schema.transactions)
+					.set({ feeInrValueMinor: f.feeInrValueMinor, updatedAt: Math.floor(Date.now() / 1000) })
+					.where(eq(schema.transactions.id, f.id))
+					.run();
 			for (const t of tsFixes)
 				db.update(schema.transactions)
 					.set({ ts: t.ts, updatedAt: Math.floor(Date.now() / 1000) })
