@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	import { enhance } from '$app/forms';
 	import { replaceState } from '$app/navigation';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
@@ -21,6 +22,8 @@
 	type TxRow = PageData['txs'][number];
 
 	const EM = '—';
+	const FILTER_TRIGGER =
+		'rounded-md border border-border bg-surface py-1 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60';
 	const TX_TYPES: TxType[] = ['INCOME', 'BUY', 'SELL', 'SPEND', 'TRANSFER'];
 	const HUES: Record<TxType, string> = {
 		INCOME: 'var(--color-badge-income)',
@@ -257,28 +260,32 @@
 			</button>
 		{/each}
 	</div>
-	<select
-		aria-label="wallet filter"
-		bind:value={walletF}
-		onchange={syncUrl}
-		class="select-field rounded-md border border-border bg-surface py-1 pl-2.5 text-xs transition-colors duration-100 hover:border-muted/60"
-	>
-		<option value="">All wallets</option>
-		{#each data.wallets as w (w.id)}
-			<option value={String(w.id)}>{w.name}{w.archived ? ' (archived)' : ''}</option>
-		{/each}
-	</select>
-	<select
-		aria-label="financial year filter"
-		bind:value={fyF}
-		onchange={syncUrl}
-		class="select-field rounded-md border border-border bg-surface py-1 pl-2.5 num text-xs transition-colors duration-100 hover:border-muted/60"
-	>
-		<option value="">All FYs</option>
-		{#each data.fys as fy (fy)}
-			<option value={fy}>{fy}</option>
-		{/each}
-	</select>
+	<Select
+		ariaLabel="wallet filter"
+		value={walletF}
+		options={[
+			{ value: '', label: 'All wallets' },
+			...data.wallets.map((w) => ({
+				value: String(w.id),
+				label: w.name + (w.archived ? ' (archived)' : '')
+			}))
+		]}
+		onchange={(v) => {
+			walletF = v;
+			syncUrl();
+		}}
+		triggerClass={FILTER_TRIGGER}
+	/>
+	<Select
+		ariaLabel="financial year filter"
+		value={fyF}
+		options={[{ value: '', label: 'All FYs' }, ...data.fys.map((fy) => ({ value: fy, label: fy }))]}
+		onchange={(v) => {
+			fyF = v;
+			syncUrl();
+		}}
+		triggerClass="{FILTER_TRIGGER} num"
+	/>
 	{#if activeCount > 0}
 		<button
 			type="button"
