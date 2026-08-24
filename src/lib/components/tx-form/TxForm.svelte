@@ -806,7 +806,7 @@
 	const inputCls =
 		'h-9 w-full rounded-md border border-border bg-surface px-2.5 text-[13px] transition-colors duration-100 placeholder:text-muted/50 hover:border-muted/50';
 	const selectCls =
-		'mt-1 h-9 w-full rounded-md border border-border bg-surface px-2 text-[13px] transition-colors duration-100 hover:border-muted/50';
+		'select-field mt-1 h-9 w-full rounded-md border border-border bg-surface pl-2.5 text-[13px] transition-colors duration-100 hover:border-muted/50';
 	const chipBtn =
 		'rounded-full border border-border px-2 py-0.5 text-[11px] text-muted transition-colors duration-100 hover:bg-surface-2 hover:text-text';
 	const chainChip = 'rounded-full bg-surface-2 px-1.5 py-px derived text-[10px]';

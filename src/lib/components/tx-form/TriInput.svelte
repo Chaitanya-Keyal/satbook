@@ -250,7 +250,7 @@
 			<select
 				value={currency}
 				aria-label="Currency"
-				class="h-9 shrink-0 rounded-md rounded-l-none border border-l-0 border-border bg-surface-2 px-1.5 num text-[12px] transition-colors duration-100 hover:text-text"
+				class="h-9 shrink-0 select-field rounded-md rounded-l-none border border-l-0 border-border bg-surface-2 pl-2.5 num text-[12px] transition-colors duration-100 hover:text-text"
 				onchange={(e) =>
 					oncurrencychange((e.currentTarget as HTMLSelectElement).value as FiatCurrency)}
 			>

@@ -278,7 +278,7 @@
 			<select
 				name="kind"
 				aria-label="wallet kind"
-				class="mt-2 w-full rounded-md border border-border bg-bg px-2 py-1.5 text-xs transition-colors duration-100 hover:border-muted/60"
+				class="mt-2 w-full select-field rounded-md border border-border bg-bg py-1.5 pl-2.5 text-xs transition-colors duration-100 hover:border-muted/60"
 			>
 				<option value="hot">Hot wallet</option>
 				<option value="cold">Cold storage</option>
@@ -452,7 +452,7 @@
 		<select
 			name="walletId"
 			aria-label="wallet"
-			class="rounded-md border border-border bg-surface px-2 py-1.5 text-xs transition-colors duration-100 hover:border-muted/60"
+			class="select-field rounded-md border border-border bg-surface py-1.5 pl-2.5 text-xs transition-colors duration-100 hover:border-muted/60"
 		>
 			{#each data.wallets as w (w.id)}
 				<option value={w.id}>{w.name}</option>
