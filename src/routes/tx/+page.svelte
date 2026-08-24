@@ -261,7 +261,7 @@
 		aria-label="wallet filter"
 		bind:value={walletF}
 		onchange={syncUrl}
-		class="rounded-md border border-border bg-surface px-2 py-1 text-xs transition-colors duration-100 hover:border-muted/60"
+		class="select-field rounded-md border border-border bg-surface py-1 pl-2.5 text-xs transition-colors duration-100 hover:border-muted/60"
 	>
 		<option value="">All wallets</option>
 		{#each data.wallets as w (w.id)}
@@ -272,7 +272,7 @@
 		aria-label="financial year filter"
 		bind:value={fyF}
 		onchange={syncUrl}
-		class="rounded-md border border-border bg-surface px-2 py-1 num text-xs transition-colors duration-100 hover:border-muted/60"
+		class="select-field rounded-md border border-border bg-surface py-1 pl-2.5 num text-xs transition-colors duration-100 hover:border-muted/60"
 	>
 		<option value="">All FYs</option>
 		{#each data.fys as fy (fy)}
