@@ -31,6 +31,10 @@
 
 @layer base {
 	html {
+		/* Tells the browser to render every NATIVE control dark: select popups,
+		   the datetime-local calendar, autofill, scrollbars. Without it the page
+		   is treated as light and those popups come back white. */
+		color-scheme: dark;
 		background-color: var(--color-bg);
 		scrollbar-width: thin;
 		scrollbar-color: var(--color-border) transparent;
