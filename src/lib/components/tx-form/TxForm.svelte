@@ -9,6 +9,7 @@
 	import { goto } from '$app/navigation';
 	import ChevronRight from '@lucide/svelte/icons/chevron-right';
 	import LotSliceTable from '$lib/components/LotSliceTable.svelte';
+	import Select from '$lib/components/Select.svelte';
 	import type {
 		FiatCurrency,
 		PreviewPayload,
@@ -806,7 +807,7 @@
 	const inputCls =
 		'h-9 w-full rounded-md border border-border bg-surface px-2.5 text-[13px] transition-colors duration-100 placeholder:text-muted/50 hover:border-muted/50';
 	const selectCls =
-		'select-field mt-1 h-9 w-full rounded-md border border-border bg-surface pl-2.5 text-[13px] transition-colors duration-100 hover:border-muted/50';
+		'h-9 w-full rounded-md border border-border bg-surface pl-2.5 text-[13px] transition-colors duration-100 hover:border-muted/50';
 	const chipBtn =
 		'rounded-full border border-border px-2 py-0.5 text-[11px] text-muted transition-colors duration-100 hover:bg-surface-2 hover:text-text';
 	const chainChip = 'rounded-full bg-surface-2 px-1.5 py-px derived text-[10px]';
@@ -932,30 +933,32 @@
 		<div class="grid gap-4 sm:grid-cols-2">
 			<div>
 				<label class={labelCls} for="tx-from">From wallet</label>
-				<select
-					id="tx-from"
-					value={fromWalletId != null ? String(fromWalletId) : ''}
-					onchange={(e) => setFrom(parseInt(e.currentTarget.value, 10))}
-					onblur={() => touch('from')}
-					class={selectCls}
-				>
-					{#if fromWalletId == null}<option value="" disabled selected>—</option>{/if}
-					{#each wallets as w (w.id)}<option value={String(w.id)}>{w.name}</option>{/each}
-				</select>
+				<div class="mt-1">
+					<Select
+						id="tx-from"
+						ariaLabel="From wallet"
+						value={fromWalletId != null ? String(fromWalletId) : ''}
+						options={wallets.map((w) => ({ value: String(w.id), label: w.name }))}
+						onchange={(v) => setFrom(parseInt(v, 10))}
+						onblur={() => touch('from')}
+						triggerClass={selectCls}
+					/>
+				</div>
 				{#if showErr('from')}<p class="mt-1 text-[11px] text-loss">{showErr('from')}</p>{/if}
 			</div>
 			<div>
 				<label class={labelCls} for="tx-to">To wallet</label>
-				<select
-					id="tx-to"
-					value={toWalletId != null ? String(toWalletId) : ''}
-					onchange={(e) => setTo(parseInt(e.currentTarget.value, 10))}
-					onblur={() => touch('to')}
-					class={selectCls}
-				>
-					{#if toWalletId == null}<option value="" disabled selected>—</option>{/if}
-					{#each wallets as w (w.id)}<option value={String(w.id)}>{w.name}</option>{/each}
-				</select>
+				<div class="mt-1">
+					<Select
+						id="tx-to"
+						ariaLabel="To wallet"
+						value={toWalletId != null ? String(toWalletId) : ''}
+						options={wallets.map((w) => ({ value: String(w.id), label: w.name }))}
+						onchange={(v) => setTo(parseInt(v, 10))}
+						onblur={() => touch('to')}
+						triggerClass={selectCls}
+					/>
+				</div>
 				{#if showErr('to')}<p class="mt-1 text-[11px] text-loss">{showErr('to')}</p>{/if}
 			</div>
 		</div>
@@ -1013,20 +1016,21 @@
 		<div class="grid gap-4 sm:grid-cols-2">
 			<div>
 				<label class={labelCls} for="tx-wallet">Wallet</label>
-				<select
-					id="tx-wallet"
-					value={walletId != null ? String(walletId) : ''}
-					onchange={(e) => {
-						const v = parseInt(e.currentTarget.value, 10);
-						walletId = Number.isInteger(v) ? v : null;
-						walletMemo[type] = walletId;
-					}}
-					onblur={() => touch('wallet')}
-					class={selectCls}
-				>
-					{#if walletId == null}<option value="" disabled selected>—</option>{/if}
-					{#each wallets as w (w.id)}<option value={String(w.id)}>{w.name}</option>{/each}
-				</select>
+				<div class="mt-1">
+					<Select
+						id="tx-wallet"
+						ariaLabel="Wallet"
+						value={walletId != null ? String(walletId) : ''}
+						options={wallets.map((w) => ({ value: String(w.id), label: w.name }))}
+						onchange={(v) => {
+							const n = parseInt(v, 10);
+							walletId = Number.isInteger(n) ? n : null;
+							walletMemo[type] = walletId;
+						}}
+						onblur={() => touch('wallet')}
+						triggerClass={selectCls}
+					/>
+				</div>
 				{#if showErr('wallet')}<p class="mt-1 text-[11px] text-loss">{showErr('wallet')}</p>{/if}
 			</div>
 		</div>
@@ -1122,21 +1126,23 @@
 						<div class="grid gap-4 sm:grid-cols-2">
 							<div>
 								<label class={labelCls} for="wd-to">Destination wallet</label>
-								<select
-									id="wd-to"
-									value={wdToWalletId != null ? String(wdToWalletId) : ''}
-									onchange={(e) => {
-										const v = parseInt(e.currentTarget.value, 10);
-										wdToWalletId = Number.isInteger(v) ? v : null;
-									}}
-									onblur={() => touch('wdTo')}
-									class={selectCls}
-								>
-									{#if wdToWalletId == null}<option value="" disabled selected>—</option>{/if}
-									{#each selfCustodyWallets as w (w.id)}
-										<option value={String(w.id)}>{w.name}</option>
-									{/each}
-								</select>
+								<div class="mt-1">
+									<Select
+										id="wd-to"
+										ariaLabel="Destination wallet"
+										value={wdToWalletId != null ? String(wdToWalletId) : ''}
+										options={selfCustodyWallets.map((w) => ({
+											value: String(w.id),
+											label: w.name
+										}))}
+										onchange={(v) => {
+											const n = parseInt(v, 10);
+											wdToWalletId = Number.isInteger(n) ? n : null;
+										}}
+										onblur={() => touch('wdTo')}
+										triggerClass={selectCls}
+									/>
+								</div>
 								{#if showErr('wdTo')}
 									<p class="mt-1 text-[11px] text-loss">{showErr('wdTo')}</p>
 								{/if}

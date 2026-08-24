@@ -104,6 +104,8 @@
 			el instanceof HTMLInputElement ||
 			el instanceof HTMLTextAreaElement ||
 			el instanceof HTMLSelectElement ||
+			// custom dropdowns own their own keys (arrows, type-ahead, Enter)
+			(el instanceof Element && el.closest('[data-select]') != null) ||
 			(el instanceof HTMLElement && el.isContentEditable)
 		);
 	}

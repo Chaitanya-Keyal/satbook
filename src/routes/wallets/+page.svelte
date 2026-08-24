@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	import { enhance } from '$app/forms';
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
 	import Check from '@lucide/svelte/icons/check';
@@ -17,6 +18,11 @@
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	// svelte-ignore state_referenced_locally
+	let newKind = $state('hot');
+	// svelte-ignore state_referenced_locally
+	let addrWalletId = $state(String(data.wallets[0]?.id ?? ''));
 
 	type WalletCard = PageData['wallets'][number];
 
@@ -275,15 +281,20 @@
 				aria-label="wallet name"
 				class="mt-2 w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-[13px] transition-colors duration-100 placeholder:text-muted/70 hover:border-muted/60"
 			/>
-			<select
-				name="kind"
-				aria-label="wallet kind"
-				class="mt-2 w-full select-field rounded-md border border-border bg-bg py-1.5 pl-2.5 text-xs transition-colors duration-100 hover:border-muted/60"
-			>
-				<option value="hot">Hot wallet</option>
-				<option value="cold">Cold storage</option>
-				<option value="exchange">Exchange</option>
-			</select>
+			<div class="mt-2">
+				<Select
+					name="kind"
+					ariaLabel="wallet kind"
+					value={newKind}
+					options={[
+						{ value: 'hot', label: 'Hot wallet' },
+						{ value: 'cold', label: 'Cold storage' },
+						{ value: 'exchange', label: 'Exchange' }
+					]}
+					onchange={(v) => (newKind = v)}
+					triggerClass="w-full rounded-md border border-border bg-bg py-1.5 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60"
+				/>
+			</div>
 			{#if form?.createError != null}
 				<p role="alert" class="mt-2 text-[11px] text-loss">{form.createError}</p>
 			{/if}
@@ -449,15 +460,14 @@
 		class="mt-4 flex flex-wrap items-start gap-2"
 		use:enhance
 	>
-		<select
+		<Select
 			name="walletId"
-			aria-label="wallet"
-			class="select-field rounded-md border border-border bg-surface py-1.5 pl-2.5 text-xs transition-colors duration-100 hover:border-muted/60"
-		>
-			{#each data.wallets as w (w.id)}
-				<option value={w.id}>{w.name}</option>
-			{/each}
-		</select>
+			ariaLabel="wallet"
+			value={addrWalletId}
+			options={data.wallets.map((w) => ({ value: String(w.id), label: w.name }))}
+			onchange={(v) => (addrWalletId = v)}
+			triggerClass="rounded-md border border-border bg-surface py-1.5 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60"
+		/>
 		<input
 			name="label"
 			placeholder="Label (optional)"

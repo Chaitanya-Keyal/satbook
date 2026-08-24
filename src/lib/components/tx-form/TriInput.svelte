@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Select from '$lib/components/Select.svelte';
 	// The 2-of-3 triad row (spec §3.2/§3.3): BTC amount × rate = fiat amount,
 	// with the manual/derived state machine from ./triad, currency select on the
 	// fiat side and the FX conversion row for USD/EUR. The parent owns the
@@ -128,6 +129,7 @@
 		tri.fiatMinor != null && fx.rate != null ? Math.round(tri.fiatMinor * fx.rate) : null
 	);
 
+	const CURRENCIES = ['INR', 'USD', 'EUR'] as const;
 	const inputBase =
 		'h-9 w-full rounded-md border bg-surface num text-[13px] transition-colors duration-100 placeholder:text-muted/50';
 	const labelCls = 'text-[11px] font-medium text-muted';
@@ -247,17 +249,14 @@
 				/>
 				{#if dfield === 'fiat'}{@render fGlyph()}{/if}
 			</div>
-			<select
+			<Select
+				ariaLabel="Currency"
 				value={currency}
-				aria-label="Currency"
-				class="h-9 shrink-0 select-field rounded-md rounded-l-none border border-l-0 border-border bg-surface-2 pl-2.5 num text-[12px] transition-colors duration-100 hover:text-text"
-				onchange={(e) =>
-					oncurrencychange((e.currentTarget as HTMLSelectElement).value as FiatCurrency)}
-			>
-				{#each ['INR', 'USD', 'EUR'] as const as c (c)}
-					<option value={c}>{c}</option>
-				{/each}
-			</select>
+				options={CURRENCIES.map((c) => ({ value: c, label: c }))}
+				onchange={(v) => oncurrencychange(v as FiatCurrency)}
+				align="right"
+				triggerClass="h-9 shrink-0 rounded-md rounded-l-none border border-l-0 border-border bg-surface-2 pl-2.5 pr-7 num text-[12px] transition-colors duration-100 hover:text-text"
+			/>
 		</div>
 		{#if fiatError}
 			<p class="mt-1 text-[11px] text-loss">{fiatError}</p>
