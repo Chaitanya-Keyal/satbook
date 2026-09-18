@@ -7,7 +7,13 @@
 	import TypeBadge from '$lib/components/TypeBadge.svelte';
 	import { unit } from '$lib/stores/unit.svelte';
 	import { formatAmount } from '$lib/utils/display';
-	import { formatBtc, formatInr, formatRateInr, formatSats } from '$lib/utils/money';
+	import {
+		formatBtc,
+		formatInr,
+		formatInrExact,
+		formatRateInr,
+		formatSats
+	} from '$lib/utils/money';
 	import { formatIstDateShort } from '$lib/utils/time';
 	import type { PageData } from './$types';
 
@@ -58,13 +64,18 @@
 		<Tile
 			label="taxable gains · {data.fy.toLowerCase()}"
 			value={formatInr(data.conservativeMinor)}
+			valueTitle={formatInrExact(data.conservativeMinor)}
 			valueClass="sm:text-3xl!"
 		>
 			{#snippet subline()}Conservative · per-disposal, losses floored to 0{/snippet}
 		</Tile>
 
 		<!-- 2. Estimated tax -->
-		<Tile label="estimated tax" value={formatInr(estTaxMinor)}>
+		<Tile
+			label="estimated tax"
+			value={formatInr(estTaxMinor)}
+			valueTitle={formatInrExact(estTaxMinor)}
+		>
 			{#snippet subline()}× 31.2% · 30% + 4% cess{/snippet}
 		</Tile>
 
@@ -72,6 +83,7 @@
 		<Tile
 			label="net incl. losses"
 			value={formatInr(data.netMinor, { explicitPlus: true })}
+			valueTitle={formatInrExact(data.netMinor, { explicitPlus: true })}
 			valueClass="text-muted"
 		>
 			{#snippet subline()}
@@ -99,7 +111,7 @@
 		<Tile label="disposals" value={String(data.disposalCount)}>
 			{#snippet subline()}
 				{#if data.disposalCount > 0}
-					{formatInr(data.considerationMinor)} total consideration
+					{formatInrExact(data.considerationMinor)} total consideration
 				{:else}
 					None in {data.fy}
 				{/if}
@@ -169,12 +181,13 @@
 								<td class="py-2 pr-3"><TypeBadge type={d.kind} /></td>
 								<td class="py-2 pr-3 text-right whitespace-nowrap">{qty(d.satsDisposed)}</td>
 								<td class="py-2 pr-3 text-right whitespace-nowrap">
-									{formatInr(d.considerationMinor)}
+									{formatInrExact(d.considerationMinor)}
 								</td>
-								<td class="py-2 pr-3 text-right whitespace-nowrap">{formatInr(d.totalCostMinor)}</td
+								<td class="py-2 pr-3 text-right whitespace-nowrap"
+									>{formatInrExact(d.totalCostMinor)}</td
 								>
 								<td class="py-2 pr-3 text-right whitespace-nowrap">
-									{formatInr(d.taxableConservativeMinor)}
+									{formatInrExact(d.taxableConservativeMinor)}
 								</td>
 								<td class="py-2 pr-3 text-right">{d.slices.length}</td>
 								<td class="py-2 text-right">

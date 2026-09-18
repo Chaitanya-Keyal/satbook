@@ -126,7 +126,10 @@
 		if (t.type === 'TRANSFER' || t.inrValueMinor == null) return null;
 		const outgoing = t.type === 'SELL' || t.type === 'SPEND';
 		return {
-			text: formatInr(outgoing ? -t.inrValueMinor : t.inrValueMinor, { explicitPlus: true }),
+			text: formatInr(outgoing ? -t.inrValueMinor : t.inrValueMinor, {
+				explicitPlus: true,
+				paise: 'nonzero'
+			}),
 			cls: outgoing ? 'text-loss' : 'text-gain'
 		};
 	}
@@ -383,7 +386,7 @@
 							{#if t.inrValueMinor != null}
 								<span class="text-muted">
 									<ArrowRight size={12} class="inline-block align-middle" aria-hidden="true" />
-									{formatInr(t.inrValueMinor)} recorded
+									{formatInr(t.inrValueMinor, { paise: 'nonzero' })} recorded
 								</span>
 							{/if}
 						</p>

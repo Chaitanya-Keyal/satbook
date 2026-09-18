@@ -4,7 +4,7 @@
 	// income ₹0 with the raw negative muted beside it ("floored" voice).
 	import { unit } from '$lib/stores/unit.svelte';
 	import type { LotSlice } from '$lib/types';
-	import { formatBtc, formatInr, formatSats } from '$lib/utils/money';
+	import { formatBtc, formatInrExact, formatSats } from '$lib/utils/money';
 	import { formatIstDateShort } from '$lib/utils/time';
 
 	let { slices, compact = false }: { slices: LotSlice[]; compact?: boolean } = $props();
@@ -32,18 +32,18 @@
 				<tr class="border-b border-border/60 last:border-0">
 					<td class="{cellY} pr-3 whitespace-nowrap">{formatIstDateShort(s.acquiredTs)}</td>
 					<td class="{cellY} pr-3 text-right whitespace-nowrap">{fmtAmount(s.satsConsumed)}</td>
-					<td class="{cellY} pr-3 text-right whitespace-nowrap">{formatInr(s.costMinor)}</td>
+					<td class="{cellY} pr-3 text-right whitespace-nowrap">{formatInrExact(s.costMinor)}</td>
 					<td class="{cellY} pr-3 text-right whitespace-nowrap">
-						{formatInr(s.considerationMinor)}
+						{formatInrExact(s.considerationMinor)}
 					</td>
 					<td class="{cellY} text-right whitespace-nowrap">
 						{#if raw < 0}
 							<span>₹0</span>
 							<span class="ml-1 derived" title="floored in conservative view">
-								({formatInr(raw)})
+								({formatInrExact(raw)})
 							</span>
 						{:else}
-							{formatInr(s.incomeMinor)}
+							{formatInrExact(s.incomeMinor)}
 						{/if}
 					</td>
 				</tr>

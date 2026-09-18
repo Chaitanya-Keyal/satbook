@@ -13,7 +13,13 @@
 	import { unit } from '$lib/stores/unit.svelte';
 	import type { WalletKind } from '$lib/types';
 	import { formatAmount } from '$lib/utils/display';
-	import { formatInr, formatSats, mulDivRound, SATS_PER_BTC } from '$lib/utils/money';
+	import {
+		formatInr,
+		formatInrExact,
+		formatSats,
+		mulDivRound,
+		SATS_PER_BTC
+	} from '$lib/utils/money';
 	import { formatIstDateShort, formatRelative } from '$lib/utils/time';
 	import type { ActionData, PageData } from './$types';
 
@@ -186,7 +192,9 @@
 				class:stale-underline={value != null && priceStale}
 				title={value != null && priceStale ? 'Computed from a stale price' : undefined}
 			>
-				{value != null ? formatInr(value) : 'no price data'}
+				<span title={value != null ? formatInrExact(value) : undefined}>
+					{value != null ? formatInr(value) : 'no price data'}
+				</span>
 			</p>
 
 			<div class="mt-3 h-1 w-full overflow-hidden rounded-full bg-surface-2" aria-hidden="true">
