@@ -74,6 +74,15 @@ export function formatInr(paiseValue: number, opts: InrFormatOptions = {}): stri
 	return `${sign}${symbol ? '₹' : ''}${out}`;
 }
 
+/**
+ * Always two decimals. Big figures are rounded to whole rupees for legibility,
+ * which can make a total look a rupee off from its parts — tooltips use this so
+ * the arithmetic reconciles exactly.
+ */
+export function formatInrExact(paiseValue: number, opts: InrFormatOptions = {}): string {
+	return formatInr(paiseValue, { ...opts, paise: 'always' });
+}
+
 /** Compact: ₹4.8L, ₹1.2Cr — only for tile sublines and chart axis ticks. */
 export function formatInrCompact(paiseValue: number): string {
 	const sign = paiseValue < 0 ? MINUS : '';

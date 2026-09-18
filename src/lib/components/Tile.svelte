@@ -10,6 +10,7 @@
 		valueClass = '',
 		stale = false,
 		staleTitle = 'Computed from a stale price',
+		valueTitle = undefined,
 		href,
 		onclick,
 		class: cls = '',
@@ -21,6 +22,8 @@
 		valueClass?: string;
 		stale?: boolean;
 		staleTitle?: string;
+		/** Exact figure behind a rounded value, shown on hover. */
+		valueTitle?: string;
 		href?: string;
 		onclick?: () => void;
 		class?: string;
@@ -38,7 +41,7 @@
 	<p
 		class="mt-2 num text-xl leading-tight font-medium sm:text-2xl {valueClass}"
 		class:stale-underline={stale}
-		title={stale ? staleTitle : undefined}
+		title={stale ? staleTitle : valueTitle}
 	>
 		{value}
 	</p>

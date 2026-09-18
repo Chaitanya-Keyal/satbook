@@ -5,7 +5,13 @@
 	import TypeBadge from '$lib/components/TypeBadge.svelte';
 	import { toggleUnit, unit } from '$lib/stores/unit.svelte';
 	import { formatAmount, formatUsd } from '$lib/utils/display';
-	import { formatInr, formatRateInr, mulDivRound, SATS_PER_BTC } from '$lib/utils/money';
+	import {
+		formatInr,
+		formatInrExact,
+		formatRateInr,
+		mulDivRound,
+		SATS_PER_BTC
+	} from '$lib/utils/money';
 	import { formatIstDateShort, formatRelative } from '$lib/utils/time';
 	import type { PageData } from './$types';
 
@@ -42,6 +48,10 @@
 
 	const breakEvenInr = $derived(
 		holdings > 0 && invested > 0 ? mulDivRound(invested, 1_000_000, holdings) : null
+	);
+	// Paise-per-BTC, unrounded, so the tooltip reconciles with net invested.
+	const breakEvenPaise = $derived(
+		holdings > 0 && invested > 0 ? Math.round((invested * 1e8) / holdings) : null
 	);
 	// Real ECB rate, not one implied from two BTC prices — see rates/index.ts.
 	const breakEvenUsd = $derived(
@@ -140,6 +150,7 @@
 		class="col-span-1 lg:col-span-3"
 		label="net invested"
 		value={hasHistory ? formatInr(invested) : EM}
+		valueTitle={hasHistory ? formatInrExact(invested) : undefined}
 	>
 		{#snippet subline()}
 			{#if data.txCount > 0}
@@ -155,6 +166,7 @@
 		class="col-span-1 lg:col-span-3"
 		label="current value"
 		value={valueMinor != null ? formatInr(valueMinor) : EM}
+		valueTitle={valueMinor != null ? formatInrExact(valueMinor) : undefined}
 		stale={priceStale}
 		{staleTitle}
 	>
@@ -172,6 +184,7 @@
 		class="col-span-1 lg:col-span-3"
 		label="unrealized p/l"
 		value={plValue}
+		valueTitle={plMinor != null ? formatInrExact(plMinor, { explicitPlus: true }) : undefined}
 		valueClass={plMinor == null ? '' : plMinor >= 0 ? 'text-gain' : 'text-loss'}
 		stale={priceStale}
 		{staleTitle}
@@ -192,6 +205,7 @@
 		class="col-span-2 lg:col-span-6"
 		label="break-even"
 		value={breakEvenInr != null ? `${formatRateInr(breakEvenInr)} / BTC` : EM}
+		valueTitle={breakEvenPaise != null ? `${formatInrExact(breakEvenPaise)} / BTC` : undefined}
 	>
 		{#snippet subline()}
 			{#if breakEvenInr == null}
@@ -236,6 +250,7 @@
 		class="col-span-2 lg:col-span-6"
 		label="this fy taxable gains · {data.fy.label.toLowerCase()}"
 		value={formatInr(data.fy.taxableMinor)}
+		valueTitle={formatInrExact(data.fy.taxableMinor)}
 		href="/tax"
 	>
 		{#snippet subline()}
@@ -273,16 +288,18 @@
 			<ul class="mt-2 flex-1 divide-y divide-border/60">
 				{#each data.recent as t (t.id)}
 					{@const s = signedInr(t)}
-					<li class="flex items-center gap-2.5 py-2.5">
+					<!-- Fixed badge column so every description starts on the same
+					     line, whatever the badge's width -->
+					<li class="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-2.5 py-2.5">
 						<TypeBadge type={t.type} />
-						<div class="min-w-0 flex-1">
+						<div class="min-w-0">
 							<p class="truncate text-[13px]" title={describe(t)}>{describe(t)}</p>
 							<p class="num text-[11px] text-muted">{formatRelative(t.ts, data.now)}</p>
 						</div>
 						{#if s}
-							<span class="shrink-0 num text-xs {s.cls}">{s.text}</span>
+							<span class="num text-xs {s.cls}">{s.text}</span>
 						{:else}
-							<span class="shrink-0 num text-xs text-muted">{EM}</span>
+							<span class="num text-xs text-muted">{EM}</span>
 						{/if}
 					</li>
 				{/each}
