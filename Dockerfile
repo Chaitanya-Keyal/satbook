@@ -1,4 +1,5 @@
-# Reference Dockerfile — not built/tested by the assistant; deployment is manual.
+# satbook: build with Bun, run the adapter-node bundle on the Bun runtime (bun:sqlite
+# needs it). Deploying: docs/self-hosting.md.
 FROM oven/bun:1 AS build
 WORKDIR /app
 COPY package.json bun.lock ./
@@ -21,6 +22,6 @@ VOLUME /data
 EXPOSE 3000
 
 HEALTHCHECK --interval=60s --timeout=5s --start-period=10s \
-  CMD ["bun", "-e", "fetch('http://localhost:3000/healthz').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+  CMD ["bun", "-e", "fetch(`http://localhost:${process.env.PORT ?? 3000}/healthz`).then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
 CMD ["bun", "./build/index.js"]

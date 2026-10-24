@@ -74,6 +74,19 @@
 		renameValue = w.name;
 	}
 
+	let retypingId = $state<number | null>(null);
+	let retypeKind = $state('hot');
+	let retypeLayer = $state('onchain');
+	let retypeCustodial = $state(false);
+
+	function startRetype(w: WalletCard) {
+		menuId = null;
+		retypingId = w.id;
+		retypeKind = w.kind;
+		retypeLayer = w.layer;
+		retypeCustodial = w.custodial;
+	}
+
 	// --- add wallet ------------------------------------------------------------
 
 	let addOpen = $state(false);
@@ -200,6 +213,73 @@
 				<p role="alert" class="mt-1 text-[11px] text-loss">{form.renameError}</p>
 			{/if}
 
+			{#if retypingId === w.id}
+				<form
+					method="POST"
+					action="?/retypeWallet"
+					class="mt-3 space-y-2 rounded-md border border-border bg-bg p-3"
+					use:enhance={() => {
+						return async ({ result, update }) => {
+							if (result.type === 'success') retypingId = null;
+							await update({ reset: false });
+						};
+					}}
+				>
+					<input type="hidden" name="id" value={w.id} />
+					<Select
+						name="kind"
+						ariaLabel="wallet kind"
+						value={retypeKind}
+						options={[
+							{ value: 'hot', label: 'Hot wallet' },
+							{ value: 'cold', label: 'Cold storage' },
+							{ value: 'exchange', label: 'Exchange' }
+						]}
+						onchange={(v) => (retypeKind = v)}
+						triggerClass="w-full rounded-md border border-border bg-surface py-1.5 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60"
+					/>
+					<Select
+						name="layer"
+						ariaLabel="wallet layer"
+						value={retypeLayer}
+						options={[
+							{ value: 'onchain', label: 'On-chain' },
+							{ value: 'lightning', label: 'Lightning' }
+						]}
+						onchange={(v) => (retypeLayer = v)}
+						triggerClass="w-full rounded-md border border-border bg-surface py-1.5 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60"
+					/>
+					<label class="flex cursor-pointer items-center gap-2 text-xs text-muted">
+						<input
+							type="checkbox"
+							name="custodial"
+							checked={retypeCustodial}
+							onchange={(e) => (retypeCustodial = e.currentTarget.checked)}
+							class="accent-(--color-accent)"
+						/>
+						Someone else holds the keys
+					</label>
+					{#if form?.retypeError != null && form?.retypeId === w.id}
+						<p role="alert" class="text-[11px] text-loss">{form.retypeError}</p>
+					{/if}
+					<div class="flex gap-2">
+						<button
+							type="submit"
+							class="rounded-md bg-accent px-2.5 py-1 text-[11px] font-medium text-bg transition-opacity duration-100 hover:opacity-90"
+						>
+							Save
+						</button>
+						<button
+							type="button"
+							onclick={() => (retypingId = null)}
+							class="rounded-md px-1.5 py-1 text-[11px] text-muted transition-colors duration-100 hover:text-text"
+						>
+							Cancel
+						</button>
+					</div>
+				</form>
+			{/if}
+
 			<p class="mt-3 num text-xl leading-tight font-medium">
 				{formatAmount(w.sats, unit.value)}
 			</p>
@@ -246,6 +326,14 @@
 						class="block w-full px-3 py-1.5 text-left transition-colors duration-100 hover:bg-surface"
 					>
 						Rename
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						onclick={() => startRetype(w)}
+						class="block w-full px-3 py-1.5 text-left transition-colors duration-100 hover:bg-surface"
+					>
+						Change kind, layer or custody
 					</button>
 					{#if w.sats === 0}
 						<button
@@ -387,7 +475,7 @@
 						<th class="py-2 pr-4 text-right label-caps font-medium">amount</th>
 						<th class="py-2 pr-4 text-right label-caps font-medium">fee</th>
 						<th class="py-2 pr-4 text-left label-caps font-medium">date</th>
-						<th class="py-2 text-left label-caps font-medium">txid</th>
+						<th class="py-2 text-left label-caps font-medium">reference</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -408,7 +496,12 @@
 							</td>
 							<td class="py-2 pr-4 num whitespace-nowrap">{formatIstDateShort(t.ts)}</td>
 							<td class="py-2 num whitespace-nowrap">
-								{#if t.txid}
+								{#if t.txid && t.refKind === 'lightning'}
+									<span
+										title="Lightning payment hash {t.txid} — settled off-chain, no explorer record"
+										class="text-muted">{t.txid.slice(0, 10)}…</span
+									>
+								{:else if t.txid}
 									<a
 										href="https://blockstream.info/tx/{t.txid}"
 										target="_blank"
