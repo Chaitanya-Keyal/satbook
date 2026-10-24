@@ -1,9 +1,11 @@
-# Reference compose file — deployment is manual; see README "Deploying".
+# satbook on this machine only, or behind a reverse proxy you run yourself.
+# For a tailnet-only deployment use deploy/tailscale/ instead. Both are covered
+# in docs/self-hosting.md.
 services:
   app:
     build: .
     restart: unless-stopped
-    # Bind to localhost only; put Caddy/nginx in front for TLS.
+    # Localhost only. Anything public goes through a TLS reverse proxy.
     ports:
       - '127.0.0.1:3000:3000'
     env_file: .env

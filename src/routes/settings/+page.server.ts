@@ -20,6 +20,7 @@ export const load: PageServerLoad = () => {
 		unit: getUnit(),
 		txCount: getLedger().length,
 		walletCount: wallets.filter((w) => w.archivedAt == null).length,
+		dbPath: process.env.DATABASE_PATH ?? 'data/btc.db',
 		lightning: lightningSettings(wallets)
 	};
 };

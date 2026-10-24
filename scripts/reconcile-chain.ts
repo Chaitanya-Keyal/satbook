@@ -15,6 +15,9 @@
 //   - else: ambiguous — reported for manual review, never guessed.
 // The INR consideration is what the counterparty actually paid — unchanged in
 // both cases. feeInrValueMinor is backfilled pro-rata as informational FMV.
+// Rows whose reference is a Lightning payment hash are skipped: it is the same
+// 64-hex shape as a txid, but no explorer has it, and asking one would only
+// leak the hash.
 
 import { eq } from 'drizzle-orm';
 import { mulDivRound, SATS_PER_BTC } from '../src/lib/utils/money';
@@ -56,6 +59,10 @@ async function main() {
 
 	for (const r of rows) {
 		if (!r.txid) continue;
+		if (r.refKind === 'lightning') {
+			notes.push(`#${r.id} ${r.type}: Lightning payment hash, not an on-chain txid — skipped`);
+			continue;
+		}
 
 		// Every txid-bearing row gets the timestamp check, whatever its type —
 		// sheet time columns have carried IST wall time in the UTC column.

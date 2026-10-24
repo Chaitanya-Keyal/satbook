@@ -49,7 +49,9 @@ bun run test                 # bun:test under TZ=America/New_York (proves IST ma
 bun run check                # svelte-check
 ```
 
-SQLite lives at `data/btc.db` (gitignored); migrations run on boot. A free
+The dev server runs at `http://localhost:5173`. SQLite lives at `data/btc.db`
+(gitignored), and migrations run on boot. `ORIGIN` and `PORT` in `.env` only
+matter for a production build (`bun run build && bun ./build/index.js`). A free
 CoinGecko demo key in `COINGECKO_DEMO_KEY` raises price-poll limits (optional —
 keyless fallbacks work).
 
@@ -68,8 +70,9 @@ bun scripts/import-xlsx.ts your-sheet.xlsx            # dry-run + reconciliation
 bun scripts/import-xlsx.ts your-sheet.xlsx --commit   # write (refuses on any engine issue)
 ```
 
-After importing, set each wallet's kind (hot / cold / exchange) on the Wallets
-screen, then reconcile against the chain — it verifies every row that carries a
+After importing, set each wallet's kind (hot / cold / exchange), layer and
+custody from its menu on the Wallets screen (the importer makes every wallet a
+hot, on-chain, self-custodied one), then reconcile against the chain — it verifies every row that carries a
 txid, splits network fees out of disposal amounts, checks transfer fees, and
 corrects timestamps to on-chain block time (spreadsheet time columns often
 carry a uniform timezone error that no internal check can catch):
@@ -96,20 +99,13 @@ The whole seed is reproducible: wipe `data/btc.db`, re-import, reconcile.
 
 ## Deploying
 
-Designed for a small VPS (prefer Singapore/EU regions — some price providers
-are geo-blocked from US IPs and intermittently blocked by Indian ISPs).
-`Dockerfile` and `docker-compose.yml` are provided as reference:
+Docker images, two ways to reach the app, and backup, restore and upgrade
+scripts. See [docs/self-hosting.md](docs/self-hosting.md). In short:
 
-1. Create `.env`: `ADMIN_PASSWORD` (first boot only), `ORIGIN`
-   (e.g. `https://satbook.example.com`, required for form CSRF),
-   optional `COINGECKO_DEMO_KEY`.
-2. `docker compose up -d --build` — SQLite on the `btcdata` volume, migrations
-   on boot.
-3. TLS via Caddy/nginx in front (`reverse_proxy 127.0.0.1:3000`).
-4. **After first login, remove `ADMIN_PASSWORD` from `.env`** — the hash lives
-   in the DB; the variable is ignored afterwards but stays readable via
-   `docker inspect` until removed. Change the password later in Settings.
-5. Back up the DB file nightly (`VACUUM INTO` a copy, rsync it offsite) — the
-   DB is the product.
-6. Optional hardening: bind the port to a WireGuard/Tailscale interface instead
-   of exposing it publicly.
+- **Tailnet-only (recommended):** `deploy/tailscale/` runs the app inside a
+  Tailscale sidecar. Nothing is published on the host, and HTTPS comes from
+  `tailscale serve`.
+- **Public:** the root `docker-compose.yml` binds `127.0.0.1:3000` for a TLS
+  reverse proxy you run.
+- **Backups:** `deploy/backup.sh` takes a consistent copy of the live database
+  nightly; `deploy/restore.sh` swaps one back in.
