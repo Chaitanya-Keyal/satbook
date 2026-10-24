@@ -7,6 +7,8 @@ import { eq } from 'drizzle-orm';
 import type {
 	DraftTx,
 	FiatCurrency,
+	IncomeKind,
+	RefKind,
 	Portfolio,
 	PreviewPayload,
 	Tx,
@@ -18,6 +20,7 @@ import { db, schema } from './db';
 import { computePortfolio } from './engine/fifo';
 
 const TX_TYPES: TxType[] = ['INCOME', 'BUY', 'SELL', 'SPEND', 'TRANSFER'];
+const INCOME_KINDS: IncomeKind[] = ['donation', 'grant', 'income'];
 const FIATS: FiatCurrency[] = ['INR', 'USD', 'EUR'];
 const FUTURE_SLACK_SEC = 300;
 
@@ -47,6 +50,9 @@ export function getLedger(): Tx[] {
 			enteredRate: r.enteredRate,
 			rateSource: r.rateSource,
 			txid: r.txid,
+			refKind: r.refKind,
+			incomeKind: r.incomeKind,
+			counterparty: r.counterparty,
 			notes: r.notes,
 			source: r.source
 		}))
@@ -221,6 +227,31 @@ function parseDraft(input: unknown): ParseResult {
 		feeSats = 0;
 	}
 
+	const txid = toStr(o.txid);
+	// A reference is either an on-chain txid or a Lightning payment hash; both
+	// are 64 hex, so the kind has to be carried explicitly. Default on-chain so
+	// that existing callers keep working.
+	let refKind: RefKind | null = null;
+	if (txid != null) {
+		const raw = typeof o.refKind === 'string' ? o.refKind : 'onchain';
+		if (raw !== 'onchain' && raw !== 'lightning')
+			errors.push("refKind must be 'onchain' or 'lightning'");
+		else refKind = raw;
+	}
+
+	// Income kind and counterparty are INCOME-only; anything else is dropped.
+	let incomeKind: IncomeKind | null = null;
+	let counterparty: string | null = null;
+	if (type === 'INCOME') {
+		if (!isNullish(o.incomeKind)) {
+			const raw = String(o.incomeKind);
+			if (!INCOME_KINDS.includes(raw as IncomeKind))
+				errors.push(`incomeKind must be one of ${INCOME_KINDS.join(', ')}`);
+			else incomeKind = raw as IncomeKind;
+		}
+		counterparty = toStr(o.counterparty);
+	}
+
 	// Fields not meaningful for the type are normalized to null (a stale field
 	// left over from a type switch in the form must not block the save).
 	let walletId: number | null = null;
@@ -304,7 +335,10 @@ function parseDraft(input: unknown): ParseResult {
 			btcUsdRate,
 			enteredRate,
 			rateSource: toStr(o.rateSource),
-			txid: toStr(o.txid),
+			txid,
+			refKind,
+			incomeKind,
+			counterparty,
 			notes: toStr(o.notes)
 		}
 	};

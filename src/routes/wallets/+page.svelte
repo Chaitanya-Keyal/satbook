@@ -7,6 +7,7 @@
 	import Ellipsis from '@lucide/svelte/icons/ellipsis';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import Flame from '@lucide/svelte/icons/flame';
+	import KeyRound from '@lucide/svelte/icons/key-round';
 	import Landmark from '@lucide/svelte/icons/landmark';
 	import Plus from '@lucide/svelte/icons/plus';
 	import Snowflake from '@lucide/svelte/icons/snowflake';
@@ -27,6 +28,8 @@
 
 	// svelte-ignore state_referenced_locally
 	let newKind = $state('hot');
+	let newLayer = $state('onchain');
+	let newCustodial = $state(false);
 	// svelte-ignore state_referenced_locally
 	let addrWalletId = $state(String(data.wallets[0]?.id ?? ''));
 
@@ -167,6 +170,19 @@
 							<KindIcon size={14} strokeWidth={1.75} aria-label={KIND_LABEL[w.kind]} />
 						</span>
 						<span class="truncate">{w.name}</span>
+						{#if w.layer === 'lightning'}
+							<span
+								class="shrink-0 rounded-full bg-surface-2 px-1.5 py-px text-[10px] text-muted"
+								title="Lightning wallet — no on-chain addresses to reconcile"
+							>
+								LN
+							</span>
+						{/if}
+						{#if w.custodial}
+							<span class="shrink-0 text-muted" title="Custodial — someone else holds the keys">
+								<KeyRound size={11} strokeWidth={1.75} aria-label="custodial" />
+							</span>
+						{/if}
 					</p>
 					<button
 						type="button"
@@ -303,6 +319,29 @@
 					triggerClass="w-full rounded-md border border-border bg-bg py-1.5 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60"
 				/>
 			</div>
+			<div class="mt-2">
+				<Select
+					name="layer"
+					ariaLabel="wallet layer"
+					value={newLayer}
+					options={[
+						{ value: 'onchain', label: 'On-chain' },
+						{ value: 'lightning', label: 'Lightning' }
+					]}
+					onchange={(v) => (newLayer = v)}
+					triggerClass="w-full rounded-md border border-border bg-bg py-1.5 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60"
+				/>
+			</div>
+			<label class="mt-2 flex cursor-pointer items-center gap-2 text-xs text-muted">
+				<input
+					type="checkbox"
+					name="custodial"
+					checked={newCustodial}
+					onchange={(e) => (newCustodial = e.currentTarget.checked)}
+					class="accent-(--color-accent)"
+				/>
+				Someone else holds the keys
+			</label>
 			{#if form?.createError != null}
 				<p role="alert" class="mt-2 text-[11px] text-loss">{form.createError}</p>
 			{/if}

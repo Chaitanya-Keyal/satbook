@@ -12,7 +12,7 @@ export const load: PageServerLoad = async () => {
 		.all()
 		.filter((w) => w.archivedAt == null)
 		.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
-		.map((w) => ({ id: w.id, name: w.name, kind: w.kind }));
+		.map((w) => ({ id: w.id, name: w.name, kind: w.kind, layer: w.layer }));
 
 	// Seed for the triad's initial rate prefill — decoration, never blocking.
 	let live: { btcInr: number; btcUsd: number } | null = null;

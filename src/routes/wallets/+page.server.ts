@@ -3,10 +3,11 @@ import { and, eq, ne } from 'drizzle-orm';
 import { db, schema } from '$lib/server/db';
 import { getLedger, getPortfolio } from '$lib/server/ledger';
 import { getLivePrice } from '$lib/server/rates';
-import type { LivePricePayload, WalletKind } from '$lib/types';
+import type { LivePricePayload, WalletKind, WalletLayer } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
 const KINDS: WalletKind[] = ['hot', 'cold', 'exchange'];
+const LAYERS: WalletLayer[] = ['onchain', 'lightning'];
 const nowSec = () => Math.floor(Date.now() / 1000);
 
 // Basic shape check only (spec §5): bech32 (bc1…) or legacy base58 (1…/3…).
@@ -48,6 +49,8 @@ export const load: PageServerLoad = async () => {
 			id: w.id,
 			name: w.name,
 			kind: w.kind,
+			layer: w.layer,
+			custodial: w.custodial,
 			sats: portfolio.walletBalancesSats[w.id] ?? 0,
 			lastTs: lastActivity.get(w.id) ?? null
 		}));
@@ -90,6 +93,11 @@ export const actions: Actions = {
 			return fail(400, { createError: 'name must be 1–40 characters' });
 		if (!KINDS.includes(kind as WalletKind))
 			return fail(400, { createError: 'kind must be hot, cold or exchange' });
+		const layer = String(form.get('layer') ?? 'onchain');
+		if (!LAYERS.includes(layer as WalletLayer))
+			return fail(400, { createError: 'layer must be onchain or lightning' });
+		// Someone else holds the keys — exchange accounts and custodial wallets.
+		const custodial = form.get('custodial') != null;
 		const clash = db.select().from(schema.wallets).where(eq(schema.wallets.name, name)).get();
 		if (clash) return fail(400, { createError: `a wallet named "${name}" already exists` });
 		const maxSort = db
@@ -98,7 +106,14 @@ export const actions: Actions = {
 			.all()
 			.reduce((m, w) => Math.max(m, w.sortOrder), 0);
 		db.insert(schema.wallets)
-			.values({ name, kind: kind as WalletKind, sortOrder: maxSort + 1, createdAt: nowSec() })
+			.values({
+				name,
+				kind: kind as WalletKind,
+				layer: layer as WalletLayer,
+				custodial,
+				sortOrder: maxSort + 1,
+				createdAt: nowSec()
+			})
 			.run();
 		return { created: true };
 	},

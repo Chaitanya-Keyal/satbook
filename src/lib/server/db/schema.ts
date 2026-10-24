@@ -14,6 +14,14 @@ export const wallets = sqliteTable('wallets', {
 	id: integer('id').primaryKey({ autoIncrement: true }),
 	name: text('name').notNull().unique(),
 	kind: text('kind', { enum: ['hot', 'cold', 'exchange'] }).notNull(),
+	// Which rail the wallet settles on. Lightning wallets have no addresses to
+	// reconcile against the chain, so chain-side features key off this rather
+	// than inferring from `kind`.
+	layer: text('layer', { enum: ['onchain', 'lightning'] })
+		.notNull()
+		.default('onchain'),
+	// Someone else holds the keys (an exchange account, a custodial Lightning wallet).
+	custodial: integer('custodial', { mode: 'boolean' }).notNull().default(false),
 	sortOrder: integer('sort_order').notNull().default(0),
 	archivedAt: integer('archived_at'),
 	createdAt: integer('created_at').notNull()
@@ -60,11 +68,20 @@ export const transactions = sqliteTable(
 		// Provenance of the entry-time rate, for display after save.
 		enteredRate: real('entered_rate'),
 		rateSource: text('rate_source'),
+		// On-chain transaction id, or a Lightning payment hash — both 64 hex, so
+		// `refKind` is what tells explorers and the chain reconciler apart. A
+		// splice-out from a Lightning wallet is still 'onchain'.
 		txid: text('txid'),
+		refKind: text('ref_kind', { enum: ['onchain', 'lightning'] }),
+		// INCOME only. Different heads of income: a donation is a gift under
+		// s.56(2)(x) with a ₹50k-per-FY aggregate test, a grant is paid for a
+		// deliverable, and income covers stipends and fees for work.
+		incomeKind: text('income_kind', { enum: ['donation', 'grant', 'income'] }),
+		counterparty: text('counterparty'),
 		notes: text('notes'),
-		source: text('source', { enum: ['manual', 'import'] })
-			.notNull()
-			.default('manual'),
+		// 'manual' or 'import:<importer>' — each importer owns its own tag so
+		// that one importer's --force can never delete another's rows.
+		source: text('source').$type<'manual' | `import:${string}`>().notNull().default('manual'),
 		importKey: text('import_key'),
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull()

@@ -48,6 +48,9 @@ const BASE = {
 	enteredRate: null,
 	rateSource: null,
 	txid: null,
+	refKind: null,
+	incomeKind: null,
+	counterparty: null,
 	notes: null
 };
 
@@ -271,6 +274,129 @@ describe('getPortfolio', () => {
 		expect(p.walletBalancesSats[1]).toBe(399_500);
 		expect(p.walletBalancesSats[2]).toBe(1_000_000);
 		expect(p.netInvestedMinor).toBe(10_020_000 + 2_000_000 - 1_800_000 - 90_000);
+	});
+});
+
+describe('lightning + income fields', () => {
+	test('a reference defaults to on-chain and accepts an explicit kind', () => {
+		const onchain = createTx({
+			...BASE,
+			type: 'INCOME',
+			ts: T0 + 9 * DAY,
+			walletId: 1,
+			amountSats: 1000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 1000,
+			fxRateToInr: 1,
+			inrValueMinor: 1000,
+			txid: 'a'.repeat(64)
+		});
+		expect(onchain.ok).toBe(true);
+		expect(getLedger().find((t) => t.id === (onchain as { id: number }).id)!.refKind).toBe(
+			'onchain'
+		);
+
+		const ln = createTx({
+			...BASE,
+			type: 'INCOME',
+			ts: T0 + 9 * DAY,
+			walletId: 1,
+			amountSats: 1000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 1000,
+			fxRateToInr: 1,
+			inrValueMinor: 1000,
+			txid: 'b'.repeat(64),
+			refKind: 'lightning'
+		});
+		expect(ln.ok).toBe(true);
+		expect(getLedger().find((t) => t.id === (ln as { id: number }).id)!.refKind).toBe('lightning');
+	});
+
+	test('a bad refKind is rejected; no reference means no kind', () => {
+		const bad = createTx({
+			...BASE,
+			type: 'INCOME',
+			ts: T0 + 9 * DAY,
+			walletId: 1,
+			amountSats: 1000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 1000,
+			fxRateToInr: 1,
+			inrValueMinor: 1000,
+			txid: 'c'.repeat(64),
+			refKind: 'liquid'
+		});
+		expect(bad.ok).toBe(false);
+
+		const none = createTx({
+			...BASE,
+			type: 'INCOME',
+			ts: T0 + 9 * DAY,
+			walletId: 1,
+			amountSats: 1000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 1000,
+			fxRateToInr: 1,
+			inrValueMinor: 1000
+		});
+		expect(none.ok).toBe(true);
+		expect(getLedger().find((t) => t.id === (none as { id: number }).id)!.refKind).toBeNull();
+	});
+
+	test('income kind and counterparty persist on INCOME and are dropped elsewhere', () => {
+		const donation = createTx({
+			...BASE,
+			type: 'INCOME',
+			ts: T0 + 9 * DAY,
+			walletId: 1,
+			amountSats: 50_000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 500_000,
+			fxRateToInr: 1,
+			inrValueMinor: 500_000,
+			incomeKind: 'donation',
+			counterparty: 'A. Donor'
+		});
+		expect(donation.ok).toBe(true);
+		const row = getLedger().find((t) => t.id === (donation as { id: number }).id)!;
+		expect(row.incomeKind).toBe('donation');
+		expect(row.counterparty).toBe('A. Donor');
+
+		// a SELL carries neither, even if the form leaves stale values behind
+		const sell = createTx({
+			...BASE,
+			type: 'SELL',
+			ts: T0 + 9 * DAY,
+			walletId: 1,
+			amountSats: 1000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 1000,
+			fxRateToInr: 1,
+			inrValueMinor: 1000,
+			incomeKind: 'donation',
+			counterparty: 'someone'
+		});
+		expect(sell.ok).toBe(true);
+		const srow = getLedger().find((t) => t.id === (sell as { id: number }).id)!;
+		expect(srow.incomeKind).toBeNull();
+		expect(srow.counterparty).toBeNull();
+	});
+
+	test('an unknown income kind is rejected', () => {
+		const res = createTx({
+			...BASE,
+			type: 'INCOME',
+			ts: T0 + 9 * DAY,
+			walletId: 1,
+			amountSats: 1000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 1000,
+			fxRateToInr: 1,
+			inrValueMinor: 1000,
+			incomeKind: 'airdrop'
+		});
+		expect(res.ok).toBe(false);
 	});
 });
 

@@ -20,6 +20,11 @@
 	let { data }: { data: PageData } = $props();
 
 	const EM = '—';
+	const INCOME_ROWS = [
+		{ key: 'donation' as const, label: 'Donations' },
+		{ key: 'grant' as const, label: 'Grants' },
+		{ key: 'income' as const, label: 'Income (stipends, fees)' }
+	];
 
 	const estTaxMinor = $derived(Math.round(data.conservativeMinor * 0.312));
 	const csvFilename = $derived(`schedule-vda-${data.fy.toLowerCase()}.csv`);
@@ -234,6 +239,57 @@
 			</div>
 		{/if}
 	</section>
+
+	<!-- Income received this FY, by head. Not a tax computation: satbook taxes
+	     only VDA disposals, and these heads are taxed at slab rates. -->
+	{#if data.incomeCount > 0}
+		{@const donations = data.incomeByKind.donation}
+		{@const overThreshold = donations > data.giftThresholdMinor}
+		<section class="rounded-md border border-border bg-surface p-4" aria-label="income received">
+			<h2 class="label-caps">income received · {data.fy.toLowerCase()}</h2>
+			<div class="mt-3 grid gap-x-8 gap-y-2 sm:grid-cols-2">
+				{#each INCOME_ROWS as row (row.key)}
+					{@const amount = data.incomeByKind[row.key]}
+					{#if amount > 0}
+						<div class="flex items-baseline justify-between gap-3 border-b border-border/50 pb-1.5">
+							<span class="text-[13px]">{row.label}</span>
+							<span class="num text-[13px]" title={formatInrExact(amount)}>
+								{formatInr(amount)}
+							</span>
+						</div>
+					{/if}
+				{/each}
+			</div>
+
+			{#if donations > 0}
+				<div class="mt-3 rounded-md border border-border/60 bg-surface-2/40 p-3">
+					<div class="flex flex-wrap items-baseline justify-between gap-2">
+						<span class="text-[13px]">Gift aggregate · s.56(2)(x)</span>
+						<span class="num text-[13px] {overThreshold ? 'text-accent' : 'text-muted'}">
+							{formatInr(donations)} of {formatInr(data.giftThresholdMinor)}
+						</span>
+					</div>
+					<div class="mt-2 h-1 overflow-hidden rounded-full bg-border">
+						<div
+							class="h-full rounded-full {overThreshold ? 'bg-accent' : 'bg-muted'}"
+							style="width: {Math.min(100, (donations / data.giftThresholdMinor) * 100)}%"
+						></div>
+					</div>
+					<p class="mt-2 text-[11px] leading-relaxed text-muted">
+						{#if overThreshold}
+							Donations from non-relatives exceed ₹50,000 this FY, so the <em>entire</em>
+							aggregate — not just the excess — is taxable at slab rates under Other Sources.
+						{:else}
+							Gifts from non-relatives are exempt while they stay under ₹50,000 in an FY; past that,
+							the whole aggregate becomes taxable at slab rates.
+						{/if}
+						Grants and stipends are not gifts and sit outside this test. satbook does not compute slab
+						tax — confirm the treatment with a CA.
+					</p>
+				</div>
+			{/if}
+		</section>
+	{/if}
 
 	<!-- FIFO lot queue (FY-independent — the future-tax picture) -->
 	<section class="rounded-md border border-border bg-surface p-4" aria-label="fifo lot queue">

@@ -22,14 +22,14 @@ export const load: PageServerLoad = async ({ params }) => {
 		.all()
 		.filter((w) => w.archivedAt == null)
 		.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
-		.map((w) => ({ id: w.id, name: w.name, kind: w.kind }));
+		.map((w) => ({ id: w.id, name: w.name, kind: w.kind, layer: w.layer }));
 
 	// A tx referencing a since-archived wallet must still render its selects
 	// (updateTx will reject the save with a specific message anyway).
 	for (const wid of [tx.walletId, tx.fromWalletId, tx.toWalletId]) {
 		if (wid != null && !wallets.some((w) => w.id === wid)) {
 			const w = db.select().from(schema.wallets).where(eq(schema.wallets.id, wid)).get();
-			if (w) wallets.push({ id: w.id, name: `${w.name} (archived)`, kind: w.kind });
+			if (w) wallets.push({ id: w.id, name: `${w.name} (archived)`, kind: w.kind, layer: w.layer });
 		}
 	}
 

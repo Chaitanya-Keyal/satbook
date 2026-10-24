@@ -24,6 +24,9 @@ const EXCEL_EPOCH_DAYS = 25569;
 const IST_OFFSET_SEC = 19800;
 const IST_TOLERANCE_SEC = 90;
 const ORPHAN_WINDOW_SEC = 900;
+/** This importer's own source tag — --force only ever deletes its own rows. */
+const SOURCE = 'import:xlsx' as const;
+
 const FIAT_NOTES_RE = /\b(USD|EUR)\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i;
 
 const TX_TYPES: readonly TxType[] = ['INCOME', 'BUY', 'SELL', 'SPEND', 'TRANSFER'];
@@ -382,11 +385,11 @@ async function main(): Promise<void> {
 			updatedAt: schema.transactions.updatedAt
 		})
 		.from(schema.transactions)
-		.where(eq(schema.transactions.source, 'import'))
+		.where(eq(schema.transactions.source, SOURCE))
 		.all();
 	if (existingImportRows.length > 0 && !force) {
 		console.error(
-			`${existingImportRows.length} rows with source='import' already exist — ` +
+			`${existingImportRows.length} rows with source='${SOURCE}' already exist — ` +
 				're-run with --force to delete and replace them'
 		);
 		process.exit(1);
@@ -465,7 +468,7 @@ async function main(): Promise<void> {
 		.select()
 		.from(schema.transactions)
 		.all()
-		.filter((t) => !(force && t.source === 'import'));
+		.filter((t) => !(force && t.source === SOURCE));
 	const maxTxId = Math.max(0, ...keptExisting.map((t) => t.id));
 	const proposed: Tx[] = [
 		...keptExisting,
@@ -488,8 +491,12 @@ async function main(): Promise<void> {
 			enteredRate: r.enteredRate,
 			rateSource: r.rateSource,
 			txid: r.txid,
+			// The sheet only ever carried on-chain references.
+			refKind: r.txid == null ? null : ('onchain' as const),
+			incomeKind: null,
+			counterparty: null,
 			notes: r.notes,
-			source: 'import' as const
+			source: SOURCE
 		}))
 	];
 	const portfolio = computePortfolio(proposed);
@@ -576,7 +583,7 @@ async function main(): Promise<void> {
 			tx.insert(schema.wallets)
 				.values({ id: w.id, name: w.name, kind: w.kind, sortOrder: w.sortOrder, createdAt: now })
 				.run();
-		if (force) tx.delete(schema.transactions).where(eq(schema.transactions.source, 'import')).run();
+		if (force) tx.delete(schema.transactions).where(eq(schema.transactions.source, SOURCE)).run();
 		for (const r of importRows)
 			tx.insert(schema.transactions)
 				.values({
@@ -598,7 +605,7 @@ async function main(): Promise<void> {
 					rateSource: r.rateSource,
 					txid: r.txid,
 					notes: r.notes,
-					source: 'import',
+					source: SOURCE,
 					importKey: r.importKey,
 					createdAt: now,
 					updatedAt: now

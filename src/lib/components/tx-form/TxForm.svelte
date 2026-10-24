@@ -12,13 +12,16 @@
 	import Select from '$lib/components/Select.svelte';
 	import type {
 		FiatCurrency,
+		IncomeKind,
+		RefKind,
 		PreviewPayload,
 		RateLookupPayload,
 		RateSource,
 		Tx,
 		TxType,
 		ValidationIssue,
-		WalletKind
+		WalletKind,
+		WalletLayer
 	} from '$lib/types';
 	import { formatInr, formatSats } from '$lib/utils/money';
 	import {
@@ -53,7 +56,7 @@
 	}: {
 		mode: 'create' | 'edit';
 		tx?: Tx | null;
-		wallets: { id: number; name: string; kind: WalletKind }[];
+		wallets: { id: number; name: string; kind: WalletKind; layer: WalletLayer }[];
 		live?: { btcInr: number; btcUsd: number } | null;
 		form?: { errors?: string[]; saved?: boolean; id?: number } | null;
 	} = $props();
@@ -84,6 +87,16 @@
 	const LS_CUR = 'satbook.txform.currency';
 	const LS_PAIR = 'satbook.txform.transfer-pair';
 	const TAX_RATE = 0.312; // 30% + 4% cess
+	const INCOME_KIND_OPTIONS = [
+		{ value: 'donation', label: 'Donation' },
+		{ value: 'grant', label: 'Grant' },
+		{ value: 'income', label: 'Income (stipend, fees)' }
+	];
+	const INCOME_KIND_HINT: Record<IncomeKind, string> = {
+		donation: 'A gift. Counts toward the ₹50,000 per-FY aggregate under s.56(2)(x).',
+		grant: 'Paid for a deliverable, so the gift threshold does not apply.',
+		income: 'A stipend or fee for work — ordinary income at slab rates.'
+	};
 	const FUTURE_SLACK_SEC = 300;
 	const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -166,6 +179,12 @@
 	let fromWalletId = $state<number | null>(initialFrom);
 	let toWalletId = $state<number | null>(initialTo);
 	let feeSats = $state<number | null>(tx && tx.feeSats > 0 ? tx.feeSats : null);
+	// svelte-ignore state_referenced_locally
+	let incomeKind = $state<IncomeKind>(tx?.incomeKind ?? 'income');
+	// svelte-ignore state_referenced_locally
+	let counterparty = $state(tx?.counterparty ?? '');
+	// svelte-ignore state_referenced_locally
+	let refKind = $state<RefKind>(tx?.refKind ?? 'onchain');
 	let feeFromChain = $state(false);
 	let btcFromChain = $state(false);
 	let triadDirty = $state(false);
@@ -240,6 +259,21 @@
 	);
 	const withdrawActive = $derived(composeEligible && withdrawOpen);
 	const selfCustodyWallets = $derived(wallets.filter((w) => w.kind !== 'exchange'));
+
+	// A Lightning wallet makes the reference ambiguous: a payment has a hash, but
+	// a splice-out from the same wallet has a real txid. Offer the choice only
+	// when it can actually arise.
+	const layerOf = (id: number | null) => wallets.find((w) => w.id === id)?.layer ?? 'onchain';
+	const lightningInvolved = $derived(
+		type === 'TRANSFER'
+			? layerOf(fromWalletId) === 'lightning' || layerOf(toWalletId) === 'lightning'
+			: layerOf(walletId) === 'lightning'
+	);
+	// Default to the rail the wallet uses; an explicit choice wins.
+	let refKindTouched = $state(false);
+	$effect(() => {
+		if (!refKindTouched) refKind = lightningInvolved ? 'lightning' : 'onchain';
+	});
 	const wdEffTs = $derived(wdTs ?? ts);
 	const wdEffSats = $derived(wdSatsTouched ? wdSats : tri.sats);
 
@@ -832,6 +866,11 @@
 	{/if}
 	<input type="hidden" name="amountSats" value={tri.sats ?? ''} />
 	<input type="hidden" name="txid" value={txid.trim()} />
+	<input type="hidden" name="refKind" value={refKind} />
+	{#if type === 'INCOME'}
+		<input type="hidden" name="incomeKind" value={incomeKind} />
+		<input type="hidden" name="counterparty" value={counterparty.trim()} />
+	{/if}
 	<input type="hidden" name="notes" value={note} />
 	{#if type === 'TRANSFER'}
 		<input type="hidden" name="fromWalletId" value={fromWalletId ?? ''} />
@@ -888,14 +927,59 @@
 		</div>
 	</div>
 
-	<!-- txid paste box + found card (spec §3.5) -->
-	<TxidLookup
-		bind:txid
-		highlight={type === 'TRANSFER' && txid.trim() === ''}
-		{wallets}
-		onchain={onChain}
-		onpick={onPick}
-	/>
+	<!-- reference: an on-chain txid (explorer autofill) or a Lightning payment
+	     hash (nothing to look up). The toggle only appears when a Lightning
+	     wallet is involved, since a splice-out from one is still on-chain. -->
+	{#if lightningInvolved}
+		<div>
+			<div class="flex items-center justify-between gap-3">
+				<span class={labelCls}>Reference</span>
+				<div class="inline-flex rounded-md border border-border p-0.5" role="group">
+					{#each [{ v: 'lightning', l: 'Payment hash' }, { v: 'onchain', l: 'On-chain txid' }] as opt (opt.v)}
+						<button
+							type="button"
+							aria-pressed={refKind === opt.v}
+							class="rounded-[4px] px-2 py-0.5 text-[11px] transition-colors duration-100 {refKind ===
+							opt.v
+								? 'bg-surface-2 text-text'
+								: 'text-muted hover:text-text'}"
+							onclick={() => {
+								refKindTouched = true;
+								refKind = opt.v as RefKind;
+							}}
+						>
+							{opt.l}
+						</button>
+					{/each}
+				</div>
+			</div>
+			{#if refKind === 'lightning'}
+				<input
+					type="text"
+					bind:value={txid}
+					placeholder="Lightning payment hash (optional)"
+					autocomplete="off"
+					spellcheck="false"
+					class="mt-1 {inputCls} num"
+				/>
+				<p class="mt-1 text-[11px] text-muted">
+					Lightning payments settle off-chain — there is nothing to look up on an explorer.
+				</p>
+			{:else}
+				<div class="mt-1">
+					<TxidLookup bind:txid highlight={false} {wallets} onchain={onChain} onpick={onPick} />
+				</div>
+			{/if}
+		</div>
+	{:else}
+		<TxidLookup
+			bind:txid
+			highlight={type === 'TRANSFER' && txid.trim() === ''}
+			{wallets}
+			onchain={onChain}
+			onpick={onPick}
+		/>
+	{/if}
 
 	<!-- timestamp (IST wall time) -->
 	<div>
@@ -1230,6 +1314,37 @@
 				{/if}
 			</div>
 		{/if}
+	{/if}
+
+	<!-- income kind + who it came from: different heads of income, same lot -->
+	{#if type === 'INCOME'}
+		<div class="grid gap-3 sm:grid-cols-2">
+			<div>
+				<label class={labelCls} for="tx-income-kind">Kind</label>
+				<div class="mt-1">
+					<Select
+						id="tx-income-kind"
+						ariaLabel="Income kind"
+						value={incomeKind}
+						options={INCOME_KIND_OPTIONS}
+						onchange={(v) => (incomeKind = v as IncomeKind)}
+						triggerClass={selectCls}
+					/>
+				</div>
+				<p class="mt-1 text-[11px] text-muted">{INCOME_KIND_HINT[incomeKind]}</p>
+			</div>
+			<div>
+				<label class={labelCls} for="tx-counterparty">From</label>
+				<input
+					id="tx-counterparty"
+					type="text"
+					bind:value={counterparty}
+					placeholder="who sent it (optional)"
+					autocomplete="off"
+					class="mt-1 {inputCls}"
+				/>
+			</div>
+		</div>
 	{/if}
 
 	<!-- note -->

@@ -27,6 +27,9 @@ const BASE = {
 	enteredRate: null,
 	rateSource: null,
 	txid: null,
+	refKind: null,
+	incomeKind: null,
+	counterparty: null,
 	notes: null,
 	source: 'manual'
 } satisfies Omit<TxSpec, 'type' | 'ts' | 'amountSats'>;

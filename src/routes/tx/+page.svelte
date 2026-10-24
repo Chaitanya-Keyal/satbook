@@ -22,6 +22,11 @@
 	type TxRow = PageData['txs'][number];
 
 	const EM = '—';
+	const INCOME_KIND_LABEL: Record<string, string> = {
+		donation: 'Donation',
+		grant: 'Grant',
+		income: 'Income'
+	};
 	const FILTER_TRIGGER =
 		'rounded-md border border-border bg-surface py-1 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60';
 	const TX_TYPES: TxType[] = ['INCOME', 'BUY', 'SELL', 'SPEND', 'TRANSFER'];
@@ -327,7 +332,9 @@
 				</div>
 				{#if t.txid}
 					<div>
-						<p class="label-caps">txid</p>
+						<p class="label-caps">
+							{t.refKind === 'lightning' ? 'payment hash' : 'txid'}
+						</p>
 						<p class="mt-0.5 num break-all text-muted">{t.txid}</p>
 						<div class="mt-1.5 flex flex-wrap items-center gap-3">
 							<button
@@ -341,23 +348,37 @@
 									<Copy size={11} aria-hidden="true" /> Copy
 								{/if}
 							</button>
-							<a
-								href="https://blockstream.info/tx/{t.txid}"
-								target="_blank"
-								rel="noreferrer"
-								class="inline-flex items-center gap-1 text-[11px] text-muted underline transition-colors duration-100 hover:text-text"
-							>
-								blockstream.info <ExternalLink size={11} aria-hidden="true" />
-							</a>
-							<a
-								href="https://mempool.emzy.de/tx/{t.txid}"
-								target="_blank"
-								rel="noreferrer"
-								class="inline-flex items-center gap-1 text-[11px] text-muted underline transition-colors duration-100 hover:text-text"
-							>
-								mempool.emzy.de <ExternalLink size={11} aria-hidden="true" />
-							</a>
+							{#if t.refKind === 'lightning'}
+								<span class="text-[11px] text-muted"> Settled off-chain — no explorer record </span>
+							{:else}
+								<a
+									href="https://blockstream.info/tx/{t.txid}"
+									target="_blank"
+									rel="noreferrer"
+									class="inline-flex items-center gap-1 text-[11px] text-muted underline transition-colors duration-100 hover:text-text"
+								>
+									blockstream.info <ExternalLink size={11} aria-hidden="true" />
+								</a>
+								<a
+									href="https://mempool.emzy.de/tx/{t.txid}"
+									target="_blank"
+									rel="noreferrer"
+									class="inline-flex items-center gap-1 text-[11px] text-muted underline transition-colors duration-100 hover:text-text"
+								>
+									mempool.emzy.de <ExternalLink size={11} aria-hidden="true" />
+								</a>
+							{/if}
 						</div>
+					</div>
+				{/if}
+				{#if t.type === 'INCOME' && (t.incomeKind || t.counterparty)}
+					<div>
+						<p class="label-caps">income</p>
+						<p class="mt-0.5">
+							{INCOME_KIND_LABEL[t.incomeKind ?? 'income']}{t.counterparty
+								? ` · from ${t.counterparty}`
+								: ''}
+						</p>
 					</div>
 				{/if}
 				{#if rate != null}

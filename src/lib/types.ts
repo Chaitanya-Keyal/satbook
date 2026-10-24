@@ -5,6 +5,19 @@
 export type TxType = 'INCOME' | 'BUY' | 'SELL' | 'SPEND' | 'TRANSFER';
 export type FiatCurrency = 'INR' | 'USD' | 'EUR';
 export type WalletKind = 'hot' | 'cold' | 'exchange';
+export type WalletLayer = 'onchain' | 'lightning';
+/** On-chain txid vs Lightning payment hash — both are 64 hex. */
+export type RefKind = 'onchain' | 'lightning';
+/**
+ * Heads of income, which attract different treatment:
+ * donation — a gift under s.56(2)(x); taxable at slab only if gifts from
+ *   non-relatives aggregate over ₹50,000 in the FY, and then in full.
+ * grant — paid for a deliverable, so the gift threshold does not apply. Money
+ *   purely to meet the cost of education would instead be exempt u/s 10(16).
+ * income — stipends and fees for work.
+ * The VDA engine treats all four identically: a lot at FMV on receipt.
+ */
+export type IncomeKind = 'donation' | 'grant' | 'income';
 export type RateSource =
 	'manual' | 'live' | 'binance-1h' | 'binance-1d' | 'coinbase-1d' | 'coingecko-1d' | 'sheet-import';
 
@@ -12,6 +25,8 @@ export interface Wallet {
 	id: number;
 	name: string;
 	kind: WalletKind;
+	layer: WalletLayer;
+	custodial: boolean;
 	sortOrder: number;
 	archivedAt: number | null;
 	createdAt: number;
@@ -43,8 +58,11 @@ export interface Tx {
 	enteredRate: number | null;
 	rateSource: string | null;
 	txid: string | null;
+	refKind: RefKind | null;
+	incomeKind: IncomeKind | null;
+	counterparty: string | null;
 	notes: string | null;
-	source: 'manual' | 'import';
+	source: 'manual' | `import:${string}`;
 }
 
 // A draft transaction being previewed before save (no id yet; id null means "new").

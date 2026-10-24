@@ -39,6 +39,15 @@ export const load: PageServerLoad = ({ url }) => {
 	const netMinor = disposals.reduce((sum, d) => sum + d.netGainMinor, 0);
 	const considerationMinor = disposals.reduce((sum, d) => sum + d.considerationMinor, 0);
 
+	// Income received in this FY, split by head. Only donations are gifts under
+	// s.56(2)(x), where gifts from non-relatives aggregating over ₹50,000 in the
+	// FY become taxable in full — satbook computes no slab tax, so this is a
+	// flag for the user's return, not a calculation.
+	const incomeRows = ledger.filter((t) => t.type === 'INCOME' && fyOf(t.ts) === fy);
+	const incomeByKind = { donation: 0, grant: 0, income: 0 };
+	for (const t of incomeRows) incomeByKind[t.incomeKind ?? 'income'] += t.inrValueMinor ?? 0;
+	const GIFT_THRESHOLD_MINOR = 50_000_00;
+
 	// Remaining lot queue (FY-independent), oldest first, annotated with the
 	// source tx's type and effective acquisition rate for the queue viz.
 	const txById = new Map(ledger.map((t) => [t.id, t]));
@@ -67,6 +76,9 @@ export const load: PageServerLoad = ({ url }) => {
 		currentFy,
 		chips,
 		conservativeMinor,
+		incomeByKind,
+		incomeCount: incomeRows.length,
+		giftThresholdMinor: GIFT_THRESHOLD_MINOR,
 		netMinor,
 		deltaMinor: netMinor - conservativeMinor,
 		disposalCount: disposals.length,
