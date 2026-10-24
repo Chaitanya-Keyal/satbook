@@ -37,6 +37,6 @@
 	"dependencies": {
 		"@lucide/svelte": "^1.28.0",
 		"drizzle-orm": "^0.45.2",
-		"xlsx": "https://cdn.sheetjs.com/xlsx-latest/xlsx-latest.tgz"
+		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
 	}
 }
