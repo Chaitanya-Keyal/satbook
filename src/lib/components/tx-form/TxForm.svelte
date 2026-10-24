@@ -281,6 +281,13 @@
 	$effect(() => {
 		if (!refKindTouched) refKind = lightningInvolved ? 'lightning' : 'onchain';
 	});
+	// INCOME can carry a fee the receiving node kept on arrival (a Lightning
+	// liquidity purchase). Offer it where that can happen, and always when the
+	// row already has one so an edit never drops it unseen.
+	const incomeFeeShown = $derived(type === 'INCOME' && (lightningInvolved || (feeSats ?? 0) > 0));
+	const incomeCreditedSats = $derived(
+		tri.sats != null && feeSats != null && feeSats > 0 ? tri.sats - feeSats : null
+	);
 	const wdEffTs = $derived(wdTs ?? ts);
 	const wdEffSats = $derived(wdSatsTouched ? wdSats : tri.sats);
 
@@ -520,6 +527,11 @@
 
 	function switchType(t: TxType) {
 		if (t === type) return;
+		// A network fee and a fee taken on arrival are different things.
+		if ((t === 'INCOME') !== (type === 'INCOME')) {
+			feeSats = null;
+			feeFromChain = false;
+		}
 		if (type !== 'TRANSFER') walletMemo[type] = walletId;
 		type = t;
 		if (t === 'TRANSFER') {
@@ -604,7 +616,7 @@
 	// --- canonical record (hidden fields) ------------------------------------
 
 	const feeInrMinor = $derived.by(() => {
-		if (!feeType || feeSats == null || feeSats <= 0) return null;
+		if ((!feeType && type !== 'INCOME') || feeSats == null || feeSats <= 0) return null;
 		// Editing an unchanged fee: the FMV stored at transaction time is the
 		// truth; only an edited fee is revalued at the current/backdated rate.
 		if (tx?.type === type && feeSats === tx.feeSats && tx.feeInrValueMinor != null)
@@ -717,8 +729,8 @@
 			walletId,
 			amountSats: tri.sats,
 			// The preview draft carries the fee so INSUFFICIENT_LOTS accounts for it.
-			feeSats: disposalType ? (feeSats ?? 0) : 0,
-			feeInrValueMinor: disposalType ? feeInrMinor : null,
+			feeSats: disposalType || type === 'INCOME' ? (feeSats ?? 0) : 0,
+			feeInrValueMinor: disposalType || type === 'INCOME' ? feeInrMinor : null,
 			fiatCurrency: currency,
 			fiatAmountMinor: tri.fiatMinor,
 			fxRateToInr: submittedFx,
@@ -732,8 +744,9 @@
 	$effect(() => {
 		clearTimeout(previewTimer);
 		// SELL/SPEND for the gain preview; TRANSFER too, so oversized transfers
-		// surface the negative-balance issue before save.
-		if (type === 'INCOME' || type === 'BUY') {
+		// surface the negative-balance issue before save, and INCOME with a fee
+		// (a fee larger than the payment comes out of the wallet's balance).
+		if (type === 'BUY' || (type === 'INCOME' && !((feeSats ?? 0) > 0))) {
 			preview = null;
 			previewPending = false;
 			return;
@@ -914,7 +927,7 @@
 		<input type="hidden" name="feeInrValueMinor" value={feeInrMinor ?? ''} />
 	{:else}
 		<input type="hidden" name="walletId" value={walletId ?? ''} />
-		{#if disposalType}
+		{#if disposalType || type === 'INCOME'}
 			<input type="hidden" name="feeSats" value={feeSats ?? 0} />
 			<input type="hidden" name="feeInrValueMinor" value={feeInrMinor ?? ''} />
 		{/if}
@@ -1203,6 +1216,38 @@
 				</p>
 			{/if}
 		</div>
+
+		{#if incomeFeeShown}
+			<!-- INCOME: sats the receiving node kept on arrival -->
+			<div>
+				<span class="flex items-center gap-1.5 {labelCls}">
+					<label for="tx-fee">Fee taken on arrival</label>
+				</span>
+				<div class="mt-1 max-w-xs">
+					<BtcAmountInput
+						id="tx-fee"
+						sats={feeSats}
+						satsOnly
+						placeholder="0"
+						oninput={(v) => {
+							feeSats = v;
+						}}
+					/>
+				</div>
+				<p class="mt-1 text-[11px] text-muted">
+					What the receiving node kept, such as a Lightning liquidity purchase. The amount above
+					stays the income; the fee is never taxed, never deductible
+				</p>
+				{#if incomeCreditedSats != null}
+					<p class="mt-0.5 num text-[11px] text-muted">
+						{incomeCreditedSats >= 0
+							? `Wallet credited ${formatSats(incomeCreditedSats)} sats`
+							: `Wallet pays ${formatSats(-incomeCreditedSats)} sats of the fee from its balance`}
+						{#if feeInrMinor != null}· fee ≈ {formatInr(feeInrMinor)}{/if}
+					</p>
+				{/if}
+			</div>
+		{/if}
 
 		{#if disposalType}
 			<!-- SELL/SPEND network fee: extra sats leaving the wallet on-chain -->

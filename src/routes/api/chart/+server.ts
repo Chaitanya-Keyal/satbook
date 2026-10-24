@@ -35,7 +35,7 @@ export const GET: RequestHandler = async () => {
 			switch (tx.type) {
 				case 'INCOME':
 				case 'BUY':
-					sats += tx.amountSats;
+					sats += tx.amountSats - tx.feeSats; // an INCOME fee is kept by the receiving node
 					investedMinor += tx.inrValueMinor ?? 0;
 					break;
 				case 'SELL':

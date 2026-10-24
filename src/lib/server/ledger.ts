@@ -271,8 +271,8 @@ function parseDraft(input: unknown): ParseResult {
 	} else {
 		walletId = toInt(o.walletId);
 		if (walletId == null) errors.push(`${type} requires walletId`);
-		if (feeSats !== 0 && type !== 'SELL' && type !== 'SPEND')
-			errors.push(`${type} must have feeSats = 0 (fees exist on TRANSFER, SELL and SPEND)`);
+		if (feeSats !== 0 && type === 'BUY')
+			errors.push('BUY must have feeSats = 0 (fees exist on TRANSFER, SELL, SPEND and INCOME)');
 		const cur = typeof o.fiatCurrency === 'string' ? o.fiatCurrency.toUpperCase() : '';
 		if (FIATS.includes(cur as FiatCurrency)) fiatCurrency = cur as FiatCurrency;
 		else errors.push(`${type} requires fiatCurrency (INR, USD or EUR)`);
@@ -286,10 +286,10 @@ function parseDraft(input: unknown): ParseResult {
 			errors.push(`${type} requires inrValueMinor ≥ 0 (paise)`);
 	}
 
-	// Fee FMV rides along on the fee-bearing types (TRANSFER/SELL/SPEND); it is
+	// Fee FMV rides along on the fee-bearing types (everything but BUY); it is
 	// informational display data, never part of any tax computation, so feeSats
 	// > 0 with feeInrValueMinor absent is fine.
-	if (type === 'TRANSFER' || type === 'SELL' || type === 'SPEND') {
+	if (type !== 'BUY') {
 		if (!isNullish(o.feeInrValueMinor)) {
 			feeInrValueMinor = toInt(o.feeInrValueMinor);
 			if (feeInrValueMinor == null || feeInrValueMinor < 0) {

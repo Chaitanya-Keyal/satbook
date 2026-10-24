@@ -184,6 +184,35 @@ describe('createTx', () => {
 		}
 	});
 
+	test('INCOME accepts a fee taken on arrival; the wallet keeps amount − fee', () => {
+		const before = getPortfolio().walletBalancesSats[1] ?? 0;
+		const res = createTx({
+			...income,
+			ts: T0 + 5 * DAY,
+			amountSats: 30_000,
+			fiatCurrency: 'INR',
+			fiatAmountMinor: 2_400_000,
+			fxRateToInr: 1,
+			inrValueMinor: 2_400_000,
+			feeSats: 21_711,
+			feeInrValueMinor: 1_736_880
+		});
+		expect(res.ok).toBe(true);
+		if (res.ok) {
+			const row = getLedger().find((t) => t.id === res.id)!;
+			expect(row.feeSats).toBe(21_711);
+			expect(row.feeInrValueMinor).toBe(1_736_880);
+			expect(getPortfolio().walletBalancesSats[1]).toBe(before + 8_289);
+			expect(deleteTx(res.id).ok).toBe(true);
+		}
+	});
+
+	test('BUY still rejects a fee', () => {
+		const res = createTx({ ...buy, ts: T0 + 5 * DAY, feeSats: 100 });
+		expect(res.ok).toBe(false);
+		if (!res.ok) expect(res.errors.some((e) => /BUY must have feeSats = 0/.test(e))).toBe(true);
+	});
+
 	test('rejects a future timestamp', () => {
 		const res = createTx({ ...buy, ts: now + 3600 });
 		expect(res.ok).toBe(false);
@@ -308,6 +337,28 @@ describe('form round-trip (the path the UI actually takes)', () => {
 		expect(row.incomeKind).toBe('donation');
 		expect(row.counterparty).toBe('A. Donor');
 		// shared database: leave balances as later tests expect them
+		db.delete(schema.transactions).where(eq(schema.transactions.id, row.id)).run();
+	});
+
+	test('an INCOME fee survives the form, so an edit cannot drop it', () => {
+		const res = createTx(
+			post({
+				type: 'INCOME',
+				ts: String(T0 + 10 * DAY),
+				walletId: '1',
+				amountSats: '30000',
+				feeSats: '21711',
+				feeInrValueMinor: '1736880',
+				fiatCurrency: 'INR',
+				fiatAmountMinor: '2400000',
+				fxRateToInr: '1',
+				inrValueMinor: '2400000'
+			})
+		);
+		expect(res.ok).toBe(true);
+		const row = getLedger().find((t) => t.id === (res as { id: number }).id)!;
+		expect(row.feeSats).toBe(21_711);
+		expect(row.feeInrValueMinor).toBe(1_736_880);
 		db.delete(schema.transactions).where(eq(schema.transactions.id, row.id)).run();
 	});
 

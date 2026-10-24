@@ -102,11 +102,11 @@
 	);
 
 	// Footer aggregates for the current filter: sats flow signed by direction
-	// (network fees always leave the stack; TRANSFER nets to −fee), INR signed
-	// by direction (TRANSFER carries none).
+	// (fees always leave the stack, including one a node kept on an INCOME;
+	// TRANSFER nets to −fee), INR signed by direction (TRANSFER carries none).
 	const netSats = $derived(
 		filtered.reduce((sum, t) => {
-			if (t.type === 'INCOME' || t.type === 'BUY') return sum + t.amountSats;
+			if (t.type === 'INCOME' || t.type === 'BUY') return sum + t.amountSats - t.feeSats;
 			if (t.type === 'SELL' || t.type === 'SPEND') return sum - t.amountSats - t.feeSats;
 			return sum - t.feeSats;
 		}, 0)
@@ -448,7 +448,7 @@
 				{/if}
 				{#if t.type === 'TRANSFER' || t.feeSats > 0}
 					<div>
-						<p class="label-caps">network fee</p>
+						<p class="label-caps">{t.type === 'INCOME' ? 'fee taken on arrival' : 'network fee'}</p>
 						<p class="mt-0.5 num">
 							{formatSats(t.feeSats)} sats
 							{#if t.feeSats > 0}

@@ -160,6 +160,14 @@ export function computePortfolio(txs: Tx[]): Portfolio {
 				});
 				credit(tx.walletId!, tx.amountSats);
 				netInvestedMinor += inr;
+				// INCOME only (the parser rejects a BUY fee): sats the receiving node
+				// kept on arrival, such as a Lightning liquidity purchase. amountSats
+				// stays the income; the wallet keeps amount − fee, and the fee is
+				// consumed untaxed from the queue head like every other fee.
+				if (tx.feeSats > 0) {
+					debit(tx.walletId!, tx.feeSats, tx.id);
+					consumeLots(tx, 'FEE', tx.feeSats, 0);
+				}
 				break;
 			}
 			case 'SELL':
