@@ -12,7 +12,8 @@ export const load: PageServerLoad = () => {
 	return {
 		unit: getUnit(),
 		txCount: getLedger().length,
-		walletCount: wallets.filter((w) => w.archivedAt == null).length
+		walletCount: wallets.filter((w) => w.archivedAt == null).length,
+		dbPath: process.env.DATABASE_PATH ?? 'data/btc.db'
 	};
 };
 

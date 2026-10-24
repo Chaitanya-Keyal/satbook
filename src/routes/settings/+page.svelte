@@ -135,15 +135,19 @@
 				— see the README for the sheet format and re-run rules.
 			</p>
 			<p>
-				<span class="text-text">Backup.</span> The SQLite file
+				<span class="text-text">Backup.</span> The SQLite database is the entire application state.
+				Copy it with
 				<code class="rounded border border-border bg-surface-2 px-1.5 py-0.5 num text-[11px]">
-					data/btc.db
+					deploy/backup.sh
 				</code>
-				is the entire application state — copy it and you have a full backup; see the README for the restore
-				steps.
+				rather than by hand — it takes a consistent copy while the app runs, which a plain file copy of
+				a live database does not. Restoring is
+				<code class="rounded border border-border bg-surface-2 px-1.5 py-0.5 num text-[11px]">
+					deploy/restore.sh
+				</code>; both are described in docs/self-hosting.md.
 			</p>
 			<p class="num text-[11px]">
-				{data.txCount} transactions · {data.walletCount} wallets · data/btc.db
+				{data.txCount} transactions · {data.walletCount} wallets · {data.dbPath}
 			</p>
 		</div>
 	</section>

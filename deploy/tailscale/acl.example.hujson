@@ -1,0 +1,26 @@
+// A tailnet policy for satbook (admin console → Access controls). Merge it into
+// your own policy rather than pasting it over.
+//
+// Why a policy is required, not optional: this Tailscale container runs in
+// userspace mode, which forwards connections to EVERY port the app listens on.
+// Without a policy that narrows it, any device on the tailnet can reach the app
+// over plain HTTP on port 3000, past the HTTPS that `serve` puts on 443.
+//
+// The policy only binds if the satbook device is tagged (here tag:satbook):
+// devices you own untagged are covered by autogroup:self, which allows every
+// port. Tag it with a tagged auth key, or later via the device's "Edit ACL
+// tags" menu.
+{
+	"tagOwners": {
+		"tag:satbook": ["autogroup:admin"],
+	},
+	"acls": [
+		// Your own untagged devices keep reaching each other on any port.
+		// Tagged devices are not part of autogroup:self, so this does not
+		// open satbook.
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+
+		// satbook: HTTPS only.
+		{"action": "accept", "src": ["autogroup:member"], "dst": ["tag:satbook:443"]},
+	],
+}

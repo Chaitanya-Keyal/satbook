@@ -1,0 +1,16 @@
+# Keep secrets, local data and host build output out of the build context.
+.git
+.env
+.env.*
+*.env
+data
+*.db
+*.db-*
+*.xlsx
+node_modules
+build
+.svelte-kit
+deploy
+docs
+tests
+.vscode
