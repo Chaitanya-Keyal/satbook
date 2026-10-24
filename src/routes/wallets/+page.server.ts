@@ -138,6 +138,30 @@ export const actions: Actions = {
 		return { renamed: true };
 	},
 
+	/** Kind, layer and custody can change after creation (the importer makes every wallet hot). */
+	retypeWallet: async ({ request }) => {
+		const form = await request.formData();
+		const id = toId(form.get('id'));
+		if (id == null) return fail(400, { retypeId: id, retypeError: 'invalid wallet id' });
+		const kind = String(form.get('kind') ?? '');
+		if (!KINDS.includes(kind as WalletKind))
+			return fail(400, { retypeId: id, retypeError: 'kind must be hot, cold or exchange' });
+		const layer = String(form.get('layer') ?? '');
+		if (!LAYERS.includes(layer as WalletLayer))
+			return fail(400, { retypeId: id, retypeError: 'layer must be onchain or lightning' });
+		const existing = db.select().from(schema.wallets).where(eq(schema.wallets.id, id)).get();
+		if (!existing) return fail(404, { retypeId: id, retypeError: 'wallet not found' });
+		db.update(schema.wallets)
+			.set({
+				kind: kind as WalletKind,
+				layer: layer as WalletLayer,
+				custodial: form.get('custodial') != null
+			})
+			.where(eq(schema.wallets.id, id))
+			.run();
+		return { retyped: true };
+	},
+
 	archiveWallet: async ({ request }) => {
 		const form = await request.formData();
 		const id = toId(form.get('id'));
