@@ -2,8 +2,9 @@
 
 Self-hosted, single-user Bitcoin portfolio and India VDA tax tracker.
 SvelteKit (Svelte 5 runes) served by the Bun runtime, SQLite via `bun:sqlite`
-with Drizzle ORM, Tailwind CSS v4. Deployed as one container with the SQLite
-file on a volume.
+with Drizzle ORM, Tailwind CSS v4. Deployed as one app container with the
+SQLite file on a volume, reached through a Tailscale sidecar or a reverse proxy
+(see [self-hosting.md](self-hosting.md)).
 
 ## Core idea: the ledger is the only source of truth
 
