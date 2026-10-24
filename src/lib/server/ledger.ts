@@ -82,21 +82,38 @@ export function previewDraft(draft: DraftTx): PreviewPayload {
 	return { issues: portfolio.issues, disposal, ok: portfolio.issues.length === 0 };
 }
 
+/**
+ * Insert one row after the same validation a hand entry gets. An importer
+ * passes its own `source` and an `importKey` (unique across the ledger), so a
+ * second insert for the same thing is refused instead of duplicated.
+ */
 export function createTx(
-	input: unknown
+	input: unknown,
+	opts: { source?: Tx['source']; importKey?: string } = {}
 ): { ok: true; id: number } | { ok: false; errors: string[] } {
 	const parsed = parseDraft(input);
 	if (!parsed.ok) return { ok: false, errors: parsed.errors };
+	const source = opts.source ?? 'manual';
+	const importKey = opts.importKey ?? null;
+	if (
+		importKey != null &&
+		db
+			.select({ id: schema.transactions.id })
+			.from(schema.transactions)
+			.where(eq(schema.transactions.importKey, importKey))
+			.get()
+	)
+		return { ok: false, errors: ['already recorded in the ledger'] };
 
 	const ledger = getLedger();
-	const proposed: Tx[] = [...ledger, { ...parsed.draft, id: nextId(ledger), source: 'manual' }];
+	const proposed: Tx[] = [...ledger, { ...parsed.draft, id: nextId(ledger), source }];
 	const errors = renderIssues(computePortfolio(proposed).issues, proposed);
 	if (errors.length > 0) return { ok: false, errors };
 
 	const now = nowSec();
 	const row = db
 		.insert(schema.transactions)
-		.values({ ...parsed.draft, source: 'manual', createdAt: now, updatedAt: now })
+		.values({ ...parsed.draft, source, importKey, createdAt: now, updatedAt: now })
 		.returning({ id: schema.transactions.id })
 		.get();
 	return { ok: true, id: row.id };
