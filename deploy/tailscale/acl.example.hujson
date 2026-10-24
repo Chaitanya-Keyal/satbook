@@ -11,16 +11,16 @@
 // port. Tag it with a tagged auth key, or later via the device's "Edit ACL
 // tags" menu.
 {
-	"tagOwners": {
-		"tag:satbook": ["autogroup:admin"],
-	},
-	"acls": [
-		// Your own untagged devices keep reaching each other on any port.
-		// Tagged devices are not part of autogroup:self, so this does not
-		// open satbook.
-		{"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+  "tagOwners": {
+    "tag:satbook": ["autogroup:admin"],
+  },
+  "acls": [
+    // Your own untagged devices keep reaching each other on any port.
+    // Tagged devices are not part of autogroup:self, so this does not
+    // open satbook.
+    {"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
 
-		// satbook: HTTPS only.
-		{"action": "accept", "src": ["autogroup:member"], "dst": ["tag:satbook:443"]},
-	],
+    // satbook: HTTPS only.
+    {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:satbook:443"]},
+  ],
 }

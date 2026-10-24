@@ -15,10 +15,10 @@ delete process.env.ADMIN_PASSWORD;
 
 const { lightningConfigState } = await import('../src/lib/server/lightning/config');
 const { parseIncoming, parseOutgoing, parseNodeInfo, parseBalance, phoenixd } =
-	await import('../src/lib/server/lightning/phoenixd');
+  await import('../src/lib/server/lightning/phoenixd');
 const { parseLnbitsPayment } = await import('../src/lib/server/lightning/lnbits');
 const { eventId, npub, parseZapRequest, verifyZapRequest } =
-	await import('../src/lib/server/lightning/zap');
+  await import('../src/lib/server/lightning/zap');
 const { syncLightning, lastSync } = await import('../src/lib/server/lightning/sync');
 const { listPayments, importKeyFor } = await import('../src/lib/server/lightning/node');
 const { db, schema } = await import('../src/lib/server/db');
@@ -26,211 +26,211 @@ const mock = await import('../scripts/mock-phoenixd');
 const { eq, like } = await import('drizzle-orm');
 
 const LN_ENV = [
-	'PHOENIXD_URL',
-	'PHOENIXD_PASSWORD',
-	'PHOENIXD_PASSWORD_FILE',
-	'LNBITS_URL',
-	'LNBITS_INVOICE_KEY',
-	'LNBITS_INVOICE_KEY_FILE',
-	'LIGHTNING_PROXY',
-	'LIGHTNING_ADDRESS'
+  'PHOENIXD_URL',
+  'PHOENIXD_PASSWORD',
+  'PHOENIXD_PASSWORD_FILE',
+  'LNBITS_URL',
+  'LNBITS_INVOICE_KEY',
+  'LNBITS_INVOICE_KEY_FILE',
+  'LIGHTNING_PROXY',
+  'LIGHTNING_ADDRESS'
 ];
 const clearEnv = () => LN_ENV.forEach((k) => delete process.env[k]);
 
 const realFetch = globalThis.fetch;
 afterAll(() => {
-	globalThis.fetch = realFetch;
-	clearEnv();
+  globalThis.fetch = realFetch;
+  clearEnv();
 });
 
 // --- config -------------------------------------------------------------------
 
 describe('config', () => {
-	beforeEach(clearEnv);
+  beforeEach(clearEnv);
 
-	test('off without PHOENIXD_URL', () => {
-		expect(lightningConfigState()).toEqual({ state: 'off' });
-	});
+  test('off without PHOENIXD_URL', () => {
+    expect(lightningConfigState()).toEqual({ state: 'off' });
+  });
 
-	test('a URL without a password is a problem, not silence', () => {
-		process.env.PHOENIXD_URL = 'http://127.0.0.1:9740';
-		const s = lightningConfigState();
-		expect(s.state).toBe('invalid');
-	});
+  test('a URL without a password is a problem, not silence', () => {
+    process.env.PHOENIXD_URL = 'http://127.0.0.1:9740';
+    const s = lightningConfigState();
+    expect(s.state).toBe('invalid');
+  });
 
-	test('on: trailing slashes dropped, LNbits needs its key, bad address rejected', () => {
-		process.env.PHOENIXD_URL = 'https://pay.example.ts.net:9740/';
-		process.env.PHOENIXD_PASSWORD = 'pw';
-		let s = lightningConfigState();
-		expect(s.state === 'on' && s.config.phoenixdUrl).toBe('https://pay.example.ts.net:9740');
-		process.env.LNBITS_URL = 'https://pay.example.ts.net:8443';
-		expect(lightningConfigState().state).toBe('invalid');
-		process.env.LNBITS_INVOICE_KEY = 'k';
-		expect(lightningConfigState().state).toBe('on');
-		process.env.LIGHTNING_ADDRESS = 'not an address';
-		expect(lightningConfigState().state).toBe('invalid');
-		process.env.LIGHTNING_ADDRESS = 'you@example.com';
-		s = lightningConfigState();
-		expect(s.state === 'on' && s.config.lightningAddress).toBe('you@example.com');
-	});
+  test('on: trailing slashes dropped, LNbits needs its key, bad address rejected', () => {
+    process.env.PHOENIXD_URL = 'https://pay.example.ts.net:9740/';
+    process.env.PHOENIXD_PASSWORD = 'pw';
+    let s = lightningConfigState();
+    expect(s.state === 'on' && s.config.phoenixdUrl).toBe('https://pay.example.ts.net:9740');
+    process.env.LNBITS_URL = 'https://pay.example.ts.net:8443';
+    expect(lightningConfigState().state).toBe('invalid');
+    process.env.LNBITS_INVOICE_KEY = 'k';
+    expect(lightningConfigState().state).toBe('on');
+    process.env.LIGHTNING_ADDRESS = 'not an address';
+    expect(lightningConfigState().state).toBe('invalid');
+    process.env.LIGHTNING_ADDRESS = 'you@example.com';
+    s = lightningConfigState();
+    expect(s.state === 'on' && s.config.lightningAddress).toBe('you@example.com');
+  });
 
-	test('a *_FILE secret wins over the plain variable', () => {
-		const dir = mkdtempSync(join(tmpdir(), 'satbook-ln-'));
-		writeFileSync(join(dir, 'pw'), 'from-file\n');
-		process.env.PHOENIXD_URL = 'http://127.0.0.1:9740';
-		process.env.PHOENIXD_PASSWORD = 'from-env';
-		process.env.PHOENIXD_PASSWORD_FILE = join(dir, 'pw');
-		const s = lightningConfigState();
-		expect(s.state === 'on' && s.config.phoenixdPassword).toBe('from-file');
-	});
+  test('a *_FILE secret wins over the plain variable', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'satbook-ln-'));
+    writeFileSync(join(dir, 'pw'), 'from-file\n');
+    process.env.PHOENIXD_URL = 'http://127.0.0.1:9740';
+    process.env.PHOENIXD_PASSWORD = 'from-env';
+    process.env.PHOENIXD_PASSWORD_FILE = join(dir, 'pw');
+    const s = lightningConfigState();
+    expect(s.state === 'on' && s.config.phoenixdPassword).toBe('from-file');
+  });
 });
 
 // --- parsers --------------------------------------------------------------------
 
 describe('phoenixd parsers', () => {
-	test('incoming: ms → s, fees stay msat, empty externalId and missing fields → null', () => {
-		const p = parseIncoming({
-			type: 'incoming_payment',
-			subType: 'lightning',
-			paymentHash: 'ab'.repeat(32),
-			externalId: '',
-			isPaid: true,
-			requestedSat: 30_000,
-			receivedSat: 8_289,
-			fees: 21_711_000,
-			completedAt: 1_700_000_000_123,
-			createdAt: 1_699_999_999_000
-		})!;
-		expect(p.completedAt).toBe(1_700_000_000);
-		expect(p.createdAt).toBe(1_699_999_999);
-		expect(p.feesMsat).toBe(21_711_000);
-		expect(p.externalId).toBeNull();
-		expect(p.description).toBeNull();
-		expect(p.payerNote).toBeNull();
-	});
+  test('incoming: ms → s, fees stay msat, empty externalId and missing fields → null', () => {
+    const p = parseIncoming({
+      type: 'incoming_payment',
+      subType: 'lightning',
+      paymentHash: 'ab'.repeat(32),
+      externalId: '',
+      isPaid: true,
+      requestedSat: 30_000,
+      receivedSat: 8_289,
+      fees: 21_711_000,
+      completedAt: 1_700_000_000_123,
+      createdAt: 1_699_999_999_000
+    })!;
+    expect(p.completedAt).toBe(1_700_000_000);
+    expect(p.createdAt).toBe(1_699_999_999);
+    expect(p.feesMsat).toBe(21_711_000);
+    expect(p.externalId).toBeNull();
+    expect(p.description).toBeNull();
+    expect(p.payerNote).toBeNull();
+  });
 
-	test('incoming: a negative receivedSat survives (a small payment, a big purchase)', () => {
-		const p = parseIncoming({
-			paymentHash: 'cd'.repeat(32),
-			isPaid: true,
-			receivedSat: -21_000,
-			fees: 22_000_000,
-			createdAt: 1
-		})!;
-		expect(p.receivedSat).toBe(-21_000);
-		expect(p.completedAt).toBeNull();
-	});
+  test('incoming: a negative receivedSat survives (a small payment, a big purchase)', () => {
+    const p = parseIncoming({
+      paymentHash: 'cd'.repeat(32),
+      isPaid: true,
+      receivedSat: -21_000,
+      fees: 22_000_000,
+      createdAt: 1
+    })!;
+    expect(p.receivedSat).toBe(-21_000);
+    expect(p.completedAt).toBeNull();
+  });
 
-	test('outgoing and malformed rows', () => {
-		const o = parseOutgoing({
-			subType: 'splice_out',
-			paymentId: 'id-1',
-			txId: 'ef'.repeat(32),
-			isPaid: true,
-			sent: 61_200,
-			fees: 1_200_000,
-			completedAt: 2_000,
-			createdAt: 1_000
-		})!;
-		expect(o).toMatchObject({ subType: 'splice_out', sentSat: 61_200, paymentHash: null });
-		expect(parseOutgoing({ subType: 'lightning' })).toBeNull();
-		expect(parseIncoming('nope')).toBeNull();
-	});
+  test('outgoing and malformed rows', () => {
+    const o = parseOutgoing({
+      subType: 'splice_out',
+      paymentId: 'id-1',
+      txId: 'ef'.repeat(32),
+      isPaid: true,
+      sent: 61_200,
+      fees: 1_200_000,
+      completedAt: 2_000,
+      createdAt: 1_000
+    })!;
+    expect(o).toMatchObject({ subType: 'splice_out', sentSat: 61_200, paymentHash: null });
+    expect(parseOutgoing({ subType: 'lightning' })).toBeNull();
+    expect(parseIncoming('nope')).toBeNull();
+  });
 
-	test('node info and balance', () => {
-		const s = mock.scenario(1_700_000_000);
-		const info = parseNodeInfo(s.info)!;
-		expect(info.channels).toHaveLength(2);
-		expect(info.chain).toBe('mainnet');
-		expect(parseBalance({ balanceSat: 5, feeCreditSat: 2 })).toEqual({
-			balanceSat: 5,
-			feeCreditSat: 2,
-			swapInSat: 0
-		});
-		expect(
-			parseBalance({
-				balanceSat: 0,
-				feeCreditSat: 0,
-				swapIn: {
-					unconfirmedBalanceSat: 1,
-					weaklyConfirmedBalanceSat: 2,
-					deeplyConfirmedBalanceSat: 3
-				}
-			})!.swapInSat
-		).toBe(6);
-		expect(parseBalance({ balanceSat: 'x' })).toBeNull();
-	});
+  test('node info and balance', () => {
+    const s = mock.scenario(1_700_000_000);
+    const info = parseNodeInfo(s.info)!;
+    expect(info.channels).toHaveLength(2);
+    expect(info.chain).toBe('mainnet');
+    expect(parseBalance({ balanceSat: 5, feeCreditSat: 2 })).toEqual({
+      balanceSat: 5,
+      feeCreditSat: 2,
+      swapInSat: 0
+    });
+    expect(
+      parseBalance({
+        balanceSat: 0,
+        feeCreditSat: 0,
+        swapIn: {
+          unconfirmedBalanceSat: 1,
+          weaklyConfirmedBalanceSat: 2,
+          deeplyConfirmedBalanceSat: 3
+        }
+      })!.swapInSat
+    ).toBe(6);
+    expect(parseBalance({ balanceSat: 'x' })).toBeNull();
+  });
 });
 
 describe('LNbits parser', () => {
-	test('comment, Lightning Address and a zap request stored as a JSON string', () => {
-		const s = mock.scenario(1_700_000_000);
-		const parsed = s.lnbits.map(parseLnbitsPayment);
-		expect(parsed.every((p) => p != null)).toBe(true);
-		const withComment = parsed.find((p) => p!.comment)!;
-		expect(withComment.comment).toBe('Thanks for the open-source work');
-		expect(withComment.lnAddress).toBe(mock.MOCK_ADDRESS);
-		const zapped = parsed.find((p) => p!.zap)!;
-		expect(zapped.zap!.kind).toBe(9734);
-		expect(zapped.amountMsat).toBe(2_100_000);
-	});
+  test('comment, Lightning Address and a zap request stored as a JSON string', () => {
+    const s = mock.scenario(1_700_000_000);
+    const parsed = s.lnbits.map(parseLnbitsPayment);
+    expect(parsed.every((p) => p != null)).toBe(true);
+    const withComment = parsed.find((p) => p!.comment)!;
+    expect(withComment.comment).toBe('Thanks for the open-source work');
+    expect(withComment.lnAddress).toBe(mock.MOCK_ADDRESS);
+    const zapped = parsed.find((p) => p!.zap)!;
+    expect(zapped.zap!.kind).toBe(9734);
+    expect(zapped.amountMsat).toBe(2_100_000);
+  });
 
-	test('payer text is capped', () => {
-		const p = parseLnbitsPayment({
-			payment_hash: 'ab'.repeat(32),
-			amount: 1000,
-			time: '2026-01-01T00:00:00+00:00',
-			extra: { comment: 'x'.repeat(5000) }
-		})!;
-		expect(p.comment!.length).toBe(500);
-	});
+  test('payer text is capped', () => {
+    const p = parseLnbitsPayment({
+      payment_hash: 'ab'.repeat(32),
+      amount: 1000,
+      time: '2026-01-01T00:00:00+00:00',
+      extra: { comment: 'x'.repeat(5000) }
+    })!;
+    expect(p.comment!.length).toBe(500);
+  });
 });
 
 // --- zaps -------------------------------------------------------------------------
 
 describe('zap requests', () => {
-	const sk = hexToBytes('11'.repeat(32));
-	const pubkey = bytesToHex(schnorr.getPublicKey(sk));
-	const sign = (over: Partial<{ content: string; kind: number; amount: string }> = {}) => {
-		const e = {
-			pubkey,
-			createdAt: 1_700_000_000,
-			kind: over.kind ?? 9734,
-			tags: [
-				['amount', over.amount ?? '21000'],
-				['p', 'aa'.repeat(32)]
-			],
-			content: over.content ?? 'hi'
-		};
-		const id = eventId(e);
-		return { ...e, id, sig: bytesToHex(schnorr.sign(hexToBytes(id), sk)) };
-	};
+  const sk = hexToBytes('11'.repeat(32));
+  const pubkey = bytesToHex(schnorr.getPublicKey(sk));
+  const sign = (over: Partial<{ content: string; kind: number; amount: string }> = {}) => {
+    const e = {
+      pubkey,
+      createdAt: 1_700_000_000,
+      kind: over.kind ?? 9734,
+      tags: [
+        ['amount', over.amount ?? '21000'],
+        ['p', 'aa'.repeat(32)]
+      ],
+      content: over.content ?? 'hi'
+    };
+    const id = eventId(e);
+    return { ...e, id, sig: bytesToHex(schnorr.sign(hexToBytes(id), sk)) };
+  };
 
-	test('a signed request verifies; its amount must match what was paid', () => {
-		const z = sign();
-		expect(verifyZapRequest(z, 21_000)).toBe(true);
-		expect(verifyZapRequest(z, 22_000)).toBe(false);
-	});
+  test('a signed request verifies; its amount must match what was paid', () => {
+    const z = sign();
+    expect(verifyZapRequest(z, 21_000)).toBe(true);
+    expect(verifyZapRequest(z, 22_000)).toBe(false);
+  });
 
-	test('tampering, a zero signature or the wrong kind all fail', () => {
-		expect(verifyZapRequest({ ...sign(), content: 'changed' }, 21_000)).toBe(false);
-		expect(verifyZapRequest({ ...sign(), sig: '0'.repeat(128) }, 21_000)).toBe(false);
-		expect(verifyZapRequest(sign({ kind: 1 }), 21_000)).toBe(false);
-	});
+  test('tampering, a zero signature or the wrong kind all fail', () => {
+    expect(verifyZapRequest({ ...sign(), content: 'changed' }, 21_000)).toBe(false);
+    expect(verifyZapRequest({ ...sign(), sig: '0'.repeat(128) }, 21_000)).toBe(false);
+    expect(verifyZapRequest(sign({ kind: 1 }), 21_000)).toBe(false);
+  });
 
-	test('parses the stored JSON string, rejects junk', () => {
-		const z = sign();
-		const raw = JSON.stringify({ ...z, created_at: z.createdAt });
-		expect(parseZapRequest(raw)?.pubkey).toBe(pubkey);
-		expect(parseZapRequest('{nope')).toBeNull();
-		expect(parseZapRequest({ kind: 9734 })).toBeNull();
-	});
+  test('parses the stored JSON string, rejects junk', () => {
+    const z = sign();
+    const raw = JSON.stringify({ ...z, created_at: z.createdAt });
+    expect(parseZapRequest(raw)?.pubkey).toBe(pubkey);
+    expect(parseZapRequest('{nope')).toBeNull();
+    expect(parseZapRequest({ kind: 9734 })).toBeNull();
+  });
 
-	test('npub encoding (NIP-19 test vector)', () => {
-		expect(npub('3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d')).toBe(
-			'npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6'
-		);
-	});
+  test('npub encoding (NIP-19 test vector)', () => {
+    expect(npub('3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d')).toBe(
+      'npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6'
+    );
+  });
 });
 
 // --- the client against the mock --------------------------------------------------
@@ -242,183 +242,183 @@ let lnbitsDown = false;
 let scope: 'limited' | 'full' = 'limited';
 
 function routeFetch() {
-	globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
-		const req = new Request(input, init);
-		const host = new URL(req.url).host;
-		if (host === 'phoenixd.test') {
-			if (phoenixdDown) throw new TypeError('connection refused');
-			return mock.phoenixdHandler(SCENARIO, scope)(req);
-		}
-		if (host === 'lnbits.test') {
-			if (lnbitsDown) return new Response('bad gateway', { status: 502 });
-			return mock.lnbitsHandler(SCENARIO)(req);
-		}
-		throw new Error(`unmocked fetch: ${req.url}`);
-	}) as typeof fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const req = new Request(input, init);
+    const host = new URL(req.url).host;
+    if (host === 'phoenixd.test') {
+      if (phoenixdDown) throw new TypeError('connection refused');
+      return mock.phoenixdHandler(SCENARIO, scope)(req);
+    }
+    if (host === 'lnbits.test') {
+      if (lnbitsDown) return new Response('bad gateway', { status: 502 });
+      return mock.lnbitsHandler(SCENARIO)(req);
+    }
+    throw new Error(`unmocked fetch: ${req.url}`);
+  }) as typeof fetch;
 }
 
 function useMockEnv(password: string = mock.MOCK_PASSWORD.limited) {
-	clearEnv();
-	process.env.PHOENIXD_URL = 'http://phoenixd.test';
-	process.env.PHOENIXD_PASSWORD = password;
-	process.env.LNBITS_URL = 'http://lnbits.test';
-	process.env.LNBITS_INVOICE_KEY = mock.MOCK_INVOICE_KEY;
+  clearEnv();
+  process.env.PHOENIXD_URL = 'http://phoenixd.test';
+  process.env.PHOENIXD_PASSWORD = password;
+  process.env.LNBITS_URL = 'http://lnbits.test';
+  process.env.LNBITS_INVOICE_KEY = mock.MOCK_INVOICE_KEY;
 }
 
 describe('phoenixd client', () => {
-	beforeEach(() => {
-		routeFetch();
-		phoenixdDown = false;
-		scope = 'limited';
-	});
+  beforeEach(() => {
+    routeFetch();
+    phoenixdDown = false;
+    scope = 'limited';
+  });
 
-	const client = (password: string = mock.MOCK_PASSWORD.limited) => {
-		useMockEnv(password);
-		const s = lightningConfigState();
-		if (s.state !== 'on') throw new Error('config');
-		return phoenixd(s.config);
-	};
+  const client = (password: string = mock.MOCK_PASSWORD.limited) => {
+    useMockEnv(password);
+    const s = lightningConfigState();
+    if (s.state !== 'on') throw new Error('config');
+    return phoenixd(s.config);
+  };
 
-	test('a wrong password reads as unauthorized; an unreachable node as unreachable', async () => {
-		const bad = await client('wrong').getInfo();
-		expect(bad.ok === false && bad.error).toBe('unauthorized');
-		phoenixdDown = true;
-		const down = await client().getInfo();
-		expect(down.ok === false && down.error).toBe('unreachable');
-	});
+  test('a wrong password reads as unauthorized; an unreachable node as unreachable', async () => {
+    const bad = await client('wrong').getInfo();
+    expect(bad.ok === false && bad.error).toBe('unauthorized');
+    phoenixdDown = true;
+    const down = await client().getInfo();
+    expect(down.ok === false && down.error).toBe('unreachable');
+  });
 
-	test('password scope: limited, full', async () => {
-		expect(await client().passwordScope()).toBe('limited');
-		scope = 'full';
-		expect(await client(mock.MOCK_PASSWORD.full).passwordScope()).toBe('full');
-	});
+  test('password scope: limited, full', async () => {
+    expect(await client().passwordScope()).toBe('limited');
+    scope = 'full';
+    expect(await client(mock.MOCK_PASSWORD.full).passwordScope()).toBe('full');
+  });
 });
 
 // --- sync ---------------------------------------------------------------------------
 
 describe('sync', () => {
-	beforeEach(() => {
-		routeFetch();
-		phoenixdDown = false;
-		lnbitsDown = false;
-		scope = 'limited';
-		useMockEnv();
-		// The test files share one in-memory database: touch only this module's state.
-		db.delete(schema.lightningPayments).run();
-		db.delete(schema.settings).where(like(schema.settings.key, 'ln_%')).run();
-	});
+  beforeEach(() => {
+    routeFetch();
+    phoenixdDown = false;
+    lnbitsDown = false;
+    scope = 'limited';
+    useMockEnv();
+    // The test files share one in-memory database: touch only this module's state.
+    db.delete(schema.lightningPayments).run();
+    db.delete(schema.settings).where(like(schema.settings.key, 'ln_%')).run();
+  });
 
-	const rows = () => db.select().from(schema.lightningPayments).all();
+  const rows = () => db.select().from(schema.lightningPayments).all();
 
-	test('copies every completed payment once; re-running adds nothing', async () => {
-		const first = await syncLightning({ force: true });
-		expect(first.ok).toBe(true);
-		expect(first.added).toBe(SCENARIO.incoming.length + SCENARIO.outgoing.length);
-		const second = await syncLightning({ force: true });
-		expect(second.added).toBe(0);
-		expect(rows()).toHaveLength(SCENARIO.incoming.length + SCENARIO.outgoing.length);
-	});
+  test('copies every completed payment once; re-running adds nothing', async () => {
+    const first = await syncLightning({ force: true });
+    expect(first.ok).toBe(true);
+    expect(first.added).toBe(SCENARIO.incoming.length + SCENARIO.outgoing.length);
+    const second = await syncLightning({ force: true });
+    expect(second.added).toBe(0);
+    expect(rows()).toHaveLength(SCENARIO.incoming.length + SCENARIO.outgoing.length);
+  });
 
-	test('each liquidity purchase pairs with the payment that carries its fee', async () => {
-		await syncLightning({ force: true });
-		const purchases = rows().filter((r) => r.subType === 'auto_liquidity');
-		expect(purchases).toHaveLength(2);
-		for (const p of purchases) {
-			expect(p.review).toBe('paired');
-			const trigger = rows().find((r) => r.key === p.pairedKey)!;
-			expect(trigger.direction).toBe('in');
-			expect(trigger.feeMsat).toBe(p.feeMsat);
-		}
-	});
+  test('each liquidity purchase pairs with the payment that carries its fee', async () => {
+    await syncLightning({ force: true });
+    const purchases = rows().filter((r) => r.subType === 'auto_liquidity');
+    expect(purchases).toHaveLength(2);
+    for (const p of purchases) {
+      expect(p.review).toBe('paired');
+      const trigger = rows().find((r) => r.key === p.pairedKey)!;
+      expect(trigger.direction).toBe('in');
+      expect(trigger.feeMsat).toBe(p.feeMsat);
+    }
+  });
 
-	test('LNbits adds comments and zaps; only a properly signed zap is verified', async () => {
-		await syncLightning({ force: true });
-		const zaps = rows().filter((r) => r.zapPubkey != null);
-		expect(zaps).toHaveLength(2);
-		expect(zaps.filter((z) => z.zapVerified).map((z) => z.zapContent)).toEqual(['great post']);
-		expect(rows().find((r) => r.comment === 'Thanks for the open-source work')).toBeTruthy();
-		// the CLI invoice never went through LNbits
-		const cli = rows().find((r) => r.description === 'invoice from the CLI')!;
-		expect(cli.comment).toBeNull();
-		expect(cli.zapPubkey).toBeNull();
-	});
+  test('LNbits adds comments and zaps; only a properly signed zap is verified', async () => {
+    await syncLightning({ force: true });
+    const zaps = rows().filter((r) => r.zapPubkey != null);
+    expect(zaps).toHaveLength(2);
+    expect(zaps.filter((z) => z.zapVerified).map((z) => z.zapContent)).toEqual(['great post']);
+    expect(rows().find((r) => r.comment === 'Thanks for the open-source work')).toBeTruthy();
+    // the CLI invoice never went through LNbits
+    const cli = rows().find((r) => r.description === 'invoice from the CLI')!;
+    expect(cli.comment).toBeNull();
+    expect(cli.zapPubkey).toBeNull();
+  });
 
-	test('a sync never resets review state', async () => {
-		await syncLightning({ force: true });
-		const t = schema.lightningPayments;
-		const one = rows().find((r) => r.direction === 'in' && r.subType === 'lightning')!;
-		db.update(t).set({ review: 'ignored' }).where(eqId(one.id)).run();
-		await syncLightning({ force: true });
-		expect(rows().find((r) => r.id === one.id)!.review).toBe('ignored');
-	});
+  test('a sync never resets review state', async () => {
+    await syncLightning({ force: true });
+    const t = schema.lightningPayments;
+    const one = rows().find((r) => r.direction === 'in' && r.subType === 'lightning')!;
+    db.update(t).set({ review: 'ignored' }).where(eqId(one.id)).run();
+    await syncLightning({ force: true });
+    expect(rows().find((r) => r.id === one.id)!.review).toBe('ignored');
+  });
 
-	test('LNbits down: the sync still succeeds, with a warning', async () => {
-		lnbitsDown = true;
-		const s = await syncLightning({ force: true });
-		expect(s.ok).toBe(true);
-		expect(s.warning).toMatch(/LNbits/);
-		expect(rows().some((r) => r.comment != null)).toBe(false);
-	});
+  test('LNbits down: the sync still succeeds, with a warning', async () => {
+    lnbitsDown = true;
+    const s = await syncLightning({ force: true });
+    expect(s.ok).toBe(true);
+    expect(s.warning).toMatch(/LNbits/);
+    expect(rows().some((r) => r.comment != null)).toBe(false);
+  });
 
-	test('phoenixd down: the sync fails and says why; nothing is written', async () => {
-		phoenixdDown = true;
-		const s = await syncLightning({ force: true });
-		expect(s.ok).toBe(false);
-		expect(s.error).toMatch(/unreachable/);
-		expect(rows()).toHaveLength(0);
-		expect(lastSync()?.ok).toBe(false);
-	});
+  test('phoenixd down: the sync fails and says why; nothing is written', async () => {
+    phoenixdDown = true;
+    const s = await syncLightning({ force: true });
+    expect(s.ok).toBe(false);
+    expect(s.error).toMatch(/unreachable/);
+    expect(rows()).toHaveLength(0);
+    expect(lastSync()?.ok).toBe(false);
+  });
 
-	test('automatic syncs are throttled; a forced one is not', async () => {
-		await syncLightning({ force: true });
-		const at = lastSync()!.at;
-		phoenixdDown = true; // a real request now would fail
-		const again = await syncLightning();
-		expect(again.ok).toBe(true);
-		expect(again.at).toBe(at);
-	});
+  test('automatic syncs are throttled; a forced one is not', async () => {
+    await syncLightning({ force: true });
+    const at = lastSync()!.at;
+    phoenixdDown = true; // a real request now would fail
+    const again = await syncLightning();
+    expect(again.ok).toBe(true);
+    expect(again.at).toBe(at);
+  });
 
-	test('the view: newest first, fees in sats, a hand-entered row with the hash counts as recorded', async () => {
-		await syncLightning({ force: true });
-		const nodeId = lastSync()!.nodeId!;
-		const comment = rows().find((r) => r.comment === 'Thanks for the open-source work')!;
-		const wallet = db
-			.insert(schema.wallets)
-			.values({ name: 'Lightning test node', kind: 'hot', layer: 'lightning', createdAt: NOW })
-			.returning({ id: schema.wallets.id })
-			.get();
-		const now = NOW;
-		const inserted = db
-			.insert(schema.transactions)
-			.values({
-				type: 'INCOME',
-				ts: comment.completedAt,
-				walletId: wallet.id,
-				amountSats: comment.amountSat,
-				fiatCurrency: 'INR',
-				fiatAmountMinor: 100,
-				fxRateToInr: 1,
-				inrValueMinor: 100,
-				txid: comment.paymentHash,
-				refKind: 'lightning',
-				createdAt: now,
-				updatedAt: now
-			})
-			.returning({ id: schema.transactions.id })
-			.get();
-		const view = listPayments(nodeId);
-		expect(view[0].completedAt).toBeGreaterThanOrEqual(view[1].completedAt);
-		const v = view.find((p) => p.key === comment.key)!;
-		expect(v.txIdInLedger).toBe(inserted.id);
-		const topUp = view.find(
-			(p) => p.direction === 'in' && p.feeSat > 0 && p.requestedSat === 40_000
-		)!;
-		expect(topUp.feeSat).toBe(22_100);
-		expect(topUp.amountSat).toBe(17_900);
-		expect(importKeyFor(topUp.key)).toBe(`phoenixd:${topUp.key}`);
-		db.delete(schema.transactions).where(eq(schema.transactions.id, inserted.id)).run();
-		db.delete(schema.wallets).where(eq(schema.wallets.id, wallet.id)).run();
-	});
+  test('the view: newest first, fees in sats, a hand-entered row with the hash counts as recorded', async () => {
+    await syncLightning({ force: true });
+    const nodeId = lastSync()!.nodeId!;
+    const comment = rows().find((r) => r.comment === 'Thanks for the open-source work')!;
+    const wallet = db
+      .insert(schema.wallets)
+      .values({ name: 'Lightning test node', kind: 'hot', layer: 'lightning', createdAt: NOW })
+      .returning({ id: schema.wallets.id })
+      .get();
+    const now = NOW;
+    const inserted = db
+      .insert(schema.transactions)
+      .values({
+        type: 'INCOME',
+        ts: comment.completedAt,
+        walletId: wallet.id,
+        amountSats: comment.amountSat,
+        fiatCurrency: 'INR',
+        fiatAmountMinor: 100,
+        fxRateToInr: 1,
+        inrValueMinor: 100,
+        txid: comment.paymentHash,
+        refKind: 'lightning',
+        createdAt: now,
+        updatedAt: now
+      })
+      .returning({ id: schema.transactions.id })
+      .get();
+    const view = listPayments(nodeId);
+    expect(view[0].completedAt).toBeGreaterThanOrEqual(view[1].completedAt);
+    const v = view.find((p) => p.key === comment.key)!;
+    expect(v.txIdInLedger).toBe(inserted.id);
+    const topUp = view.find(
+      (p) => p.direction === 'in' && p.feeSat > 0 && p.requestedSat === 40_000
+    )!;
+    expect(topUp.feeSat).toBe(22_100);
+    expect(topUp.amountSat).toBe(17_900);
+    expect(importKeyFor(topUp.key)).toBe(`phoenixd:${topUp.key}`);
+    db.delete(schema.transactions).where(eq(schema.transactions.id, inserted.id)).run();
+    db.delete(schema.wallets).where(eq(schema.wallets.id, wallet.id)).run();
+  });
 });
 
 const eqId = (id: number) => eq(schema.lightningPayments.id, id);

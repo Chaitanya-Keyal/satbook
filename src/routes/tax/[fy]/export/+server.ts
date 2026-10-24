@@ -9,24 +9,24 @@ import { fyStartYear } from '$lib/utils/fy';
 import type { RequestHandler } from './$types';
 
 export const GET: RequestHandler = ({ params }) => {
-	let startYear: number;
-	try {
-		startYear = fyStartYear(params.fy);
-	} catch {
-		return json({ error: `invalid FY label '${params.fy}'` }, { status: 400 });
-	}
+  let startYear: number;
+  try {
+    startYear = fyStartYear(params.fy);
+  } catch {
+    return json({ error: `invalid FY label '${params.fy}'` }, { status: 400 });
+  }
 
-	const rows = getPortfolio().vdaRows.filter((r) => r.fy === params.fy);
-	if (rows.length === 0) return json({ error: 'no disposals' }, { status: 404 });
+  const rows = getPortfolio().vdaRows.filter((r) => r.fy === params.fy);
+  if (rows.length === 0) return json({ error: 'no disposals' }, { status: 404 });
 
-	const txidByDisposal = new Map(getLedger().map((t) => [t.id, t.txid] as const));
-	const csv = buildVdaCsv(rows, params.fy, txidByDisposal);
+  const txidByDisposal = new Map(getLedger().map((t) => [t.id, t.txid] as const));
+  const csv = buildVdaCsv(rows, params.fy, txidByDisposal);
 
-	const yy = ((startYear + 1) % 100).toString().padStart(2, '0');
-	return new Response(csv, {
-		headers: {
-			'content-type': 'text/csv; charset=utf-8',
-			'content-disposition': `attachment; filename="schedule-vda-fy${startYear}-${yy}.csv"`
-		}
-	});
+  const yy = ((startYear + 1) % 100).toString().padStart(2, '0');
+  return new Response(csv, {
+    headers: {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="schedule-vda-fy${startYear}-${yy}.csv"`
+    }
+  });
 };
