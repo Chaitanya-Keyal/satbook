@@ -12,6 +12,7 @@
 	import Plus from '@lucide/svelte/icons/plus';
 	import SettingsIcon from '@lucide/svelte/icons/settings';
 	import Wallet from '@lucide/svelte/icons/wallet';
+	import Zap from '@lucide/svelte/icons/zap';
 	import favicon from '$lib/assets/favicon.svg';
 	import { setUnitValue, toggleUnit, unit } from '$lib/stores/unit.svelte';
 	import type { LivePricePayload } from '$lib/types';
@@ -91,13 +92,14 @@
 	let gTimer: ReturnType<typeof setTimeout> | undefined;
 	let cheatsheetOpen = $state(false);
 
-	const GOTO: Record<string, string> = {
+	const GOTO: Record<string, string> = $derived({
 		d: '/',
 		t: '/tx',
 		w: '/wallets',
 		x: '/tax',
-		c: '/convert'
-	};
+		c: '/convert',
+		...(data.lightning ? { l: '/lightning' } : {})
+	});
 
 	function isEditable(el: EventTarget | null): boolean {
 		return (
@@ -169,7 +171,7 @@
 
 	// `tab: true` items fill the mobile bottom bar (four, around the + button);
 	// the rest become icon links in the mobile top bar. The rail shows them all.
-	const NAV = [
+	const BASE_NAV = [
 		{
 			href: '/',
 			label: 'Dashboard',
@@ -213,21 +215,33 @@
 			match: (p: string) => p.startsWith('/settings')
 		}
 	];
-	const TAB_NAV = NAV.filter((i) => i.tab);
-	const UTILITY_NAV = NAV.filter((i) => !i.tab);
+	// The optional Lightning module gets a rail entry after Tax when configured.
+	const LIGHTNING_NAV = {
+		href: '/lightning',
+		label: 'Lightning',
+		icon: Zap,
+		tab: false,
+		match: (p: string) => p.startsWith('/lightning')
+	};
+	const NAV = $derived(
+		data.lightning ? [...BASE_NAV.slice(0, 4), LIGHTNING_NAV, ...BASE_NAV.slice(4)] : BASE_NAV
+	);
+	const TAB_NAV = $derived(NAV.filter((i) => i.tab));
+	const UTILITY_NAV = $derived(NAV.filter((i) => !i.tab));
 
-	const SHORTCUTS: [string, string][] = [
+	const SHORTCUTS: [string, string][] = $derived([
 		['n', 'New entry'],
 		['g d', 'Go to dashboard'],
 		['g t', 'Go to transactions'],
 		['g w', 'Go to wallets'],
 		['g x', 'Go to tax'],
+		...(data.lightning ? ([['g l', 'Go to Lightning']] as [string, string][]) : []),
 		['g c', 'Go to converter'],
 		['u', 'Flip sats / BTC'],
 		['/', 'Search ledger (on /tx)'],
 		['?', 'This cheatsheet'],
 		['esc', 'Close / cancel']
-	];
+	]);
 </script>
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>

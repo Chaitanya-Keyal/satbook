@@ -32,6 +32,10 @@ See [docs/architecture.md](docs/architecture.md).
   visualization, and CSV export.
 - **Multi-currency** — non-INR amounts convert once at entry with an editable
   fetched rate; the original currency is preserved.
+- **Lightning (optional)** — a read-only dashboard for your own phoenixd node:
+  balance, inbound liquidity and the next top-up's cost, every payment with its
+  Lightning Address comment or verified zap sender, and a check of the node
+  against the ledger. See [docs/lightning.md](docs/lightning.md).
 
 ## Development
 
