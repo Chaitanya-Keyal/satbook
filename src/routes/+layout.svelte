@@ -318,6 +318,12 @@
 					>
 						<item.icon size={16} strokeWidth={1.5} class="shrink-0" aria-hidden="true" />
 						{item.label}
+						{#if item.href === '/lightning' && data.lightningPending > 0}
+							<span
+								class="ml-auto rounded-full bg-accent px-1.5 num text-[10px] leading-4 font-medium text-bg"
+								title="{data.lightningPending} to review">{data.lightningPending}</span
+							>
+						{/if}
 					</a>
 				{/each}
 			</nav>
@@ -369,7 +375,12 @@
 								: 'text-muted'}"
 							aria-label={item.label}
 						>
-							<item.icon size={16} strokeWidth={1.5} aria-hidden="true" />
+							<span class="relative block">
+								<item.icon size={16} strokeWidth={1.5} aria-hidden="true" />
+								{#if item.href === '/lightning' && data.lightningPending > 0}
+									<span class="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent"></span>
+								{/if}
+							</span>
 						</a>
 					{/each}
 					<form method="POST" action="/logout">

@@ -76,7 +76,7 @@
 	{:else if p.review === 'ignored'}
 		<span class="text-muted">ignored</span>
 	{:else}
-		<span class="text-muted">not recorded</span>
+		<a href="/lightning/review" class="text-accent underline">review</a>
 	{/if}
 {/snippet}
 
@@ -329,6 +329,16 @@
 						</p>
 					</div>
 				{/if}
+			{/if}
+
+			{#if live.pending > 0}
+				<a
+					href="/lightning/review"
+					class="mt-3 flex items-center justify-between gap-3 rounded-md border border-accent/40 bg-surface p-3 text-xs transition-colors duration-100 hover:bg-surface-2"
+				>
+					<span>{live.pending} payment{live.pending === 1 ? '' : 's'} not in the ledger yet</span>
+					<span class="text-accent">Review →</span>
+				</a>
 			{/if}
 
 			{#if live.sync.warning}
