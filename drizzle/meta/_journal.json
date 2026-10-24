@@ -36,6 +36,13 @@
 			"when": 1792879869324,
 			"tag": "0004_tough_toxin",
 			"breakpoints": true
+		},
+		{
+			"idx": 5,
+			"version": "6",
+			"when": 1792880320474,
+			"tag": "0005_violet_ricochet",
+			"breakpoints": true
 		}
 	]
 }

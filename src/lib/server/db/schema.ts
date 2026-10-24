@@ -102,6 +102,59 @@ export const transactions = sqliteTable(
 	]
 );
 
+// Payments read from a phoenixd node (the optional Lightning module), kept so
+// they can be reviewed into ledger rows. Rows are per node, so a testnet node
+// and a mainnet node never mix. Whether a payment is in the ledger is derived,
+// not stored: a transactions row with import_key 'phoenixd:' || key records it,
+// so deleting that row puts the payment back up for review.
+// Deliberately no foreign key into transactions: rebuilding that table (as
+// migrations 0001 and 0004 do) only works while nothing references it.
+export const lightningPayments = sqliteTable(
+	'lightning_payments',
+	{
+		id: integer('id').primaryKey({ autoIncrement: true }),
+		nodeId: text('node_id').notNull(),
+		// 'in:<paymentHash>' or 'out:<paymentId>'
+		key: text('key').notNull(),
+		direction: text('direction', { enum: ['in', 'out'] }).notNull(),
+		// phoenixd's subType: lightning, auto_liquidity, splice_out, channel_close, …
+		subType: text('sub_type').notNull(),
+		paymentHash: text('payment_hash'),
+		// On-chain txid for the on-chain outgoing subtypes (splice_out, …).
+		txId: text('tx_id'),
+		// Incoming: receivedSat, net of any liquidity fee (can be negative when a
+		// small payment triggers a large purchase). Outgoing: sent, fees included.
+		amountSat: integer('amount_sat').notNull(),
+		feeMsat: integer('fee_msat').notNull().default(0),
+		// The invoice amount (BOLT11 with an amount), i.e. what the payer paid.
+		requestedSat: integer('requested_sat'),
+		description: text('description'),
+		payerNote: text('payer_note'),
+		completedAt: integer('completed_at').notNull(), // unix sec
+		// From LNbits, when it fronts the node: link memo, payer comment, the
+		// Lightning Address paid, and a NIP-57 zap request's sender and message.
+		memo: text('memo'),
+		comment: text('comment'),
+		lnAddress: text('ln_address'),
+		zapPubkey: text('zap_pubkey'),
+		zapContent: text('zap_content'),
+		// The zap request's signature checked out. LNbits does not check it, so
+		// an unverified sender is only a claim.
+		zapVerified: integer('zap_verified', { mode: 'boolean' }),
+		// 'paired' marks an outgoing auto_liquidity record matched to the incoming
+		// payment that already carries its fee.
+		review: text('review', { enum: ['pending', 'ignored', 'paired'] })
+			.notNull()
+			.default('pending'),
+		pairedKey: text('paired_key'),
+		syncedAt: integer('synced_at').notNull()
+	},
+	(t) => [
+		uniqueIndex('ln_node_key_idx').on(t.nodeId, t.key),
+		index('ln_completed_idx').on(t.completedAt)
+	]
+);
+
 // Permanent immutable cache of historical BTC prices; only fully-elapsed periods are stored.
 export const priceCandles = sqliteTable(
 	'price_candles',
@@ -157,7 +210,8 @@ export const loginAttempts = sqliteTable('login_attempts', {
 });
 
 // KV settings: password_hash, fee_micro_disposal ('0'|'1'), unit ('sats'|'btc'),
-// per-type entry defaults, last transfer pair.
+// per-type entry defaults, last transfer pair, and the Lightning module's state
+// (ln_wallet_id, ln_last_sync, per-node sync cursors).
 export const settings = sqliteTable('settings', {
 	key: text('key').primaryKey(),
 	value: text('value').notNull()
