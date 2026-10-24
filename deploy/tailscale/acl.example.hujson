@@ -1,5 +1,7 @@
-// A tailnet policy for satbook (admin console → Access controls). Merge it into
-// your own policy rather than pasting it over.
+// A tailnet policy for satbook (admin console → Access controls), in the
+// grants form Tailscale's default policy uses. Merge it into your own policy
+// rather than pasting it over: the first grant replaces the default
+// allow-everything grant, the rest is added.
 //
 // Why a policy is required, not optional: this Tailscale container runs in
 // userspace mode, which forwards connections to EVERY port the app listens on.
@@ -14,13 +16,21 @@
   "tagOwners": {
     "tag:satbook": ["autogroup:admin"],
   },
-  "acls": [
+  "grants": [
     // Your own untagged devices keep reaching each other on any port.
     // Tagged devices are not part of autogroup:self, so this does not
     // open satbook.
-    {"action": "accept", "src": ["autogroup:member"], "dst": ["autogroup:self:*"]},
+    {"src": ["autogroup:member"], "dst": ["autogroup:self"], "ip": ["*"]},
 
     // satbook: HTTPS only.
-    {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:satbook:443"]},
+    {"src": ["autogroup:member"], "dst": ["tag:satbook"], "ip": ["tcp:443"]},
+  ],
+  // Checked on every save. Use your own login (e.g. name@github).
+  "tests": [
+    {
+      "src": "you@example.com",
+      "accept": ["tag:satbook:443"],
+      "deny": ["tag:satbook:3000"],
+    },
   ],
 }

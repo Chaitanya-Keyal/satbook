@@ -90,10 +90,18 @@ proxy resolves tailnet names itself. Price and explorer lookups go out as
 before.
 
 Your tailnet policy decides who reaches the node. With the node tagged
-`tag:pay` and satbook tagged `tag:satbook`, satbook needs:
+`tag:pay` and satbook tagged `tag:satbook` (see the sample in
+`deploy/tailscale/acl.example.hujson`), merge in:
 
 ```hujson
-{"action": "accept", "src": ["tag:satbook"], "dst": ["tag:pay:9740", "tag:pay:8443"]},
+"tagOwners": { "tag:pay": ["autogroup:admin"] },
+"grants": [
+  // the LNbits admin, for your own devices
+  {"src": ["autogroup:member"], "dst": ["tag:pay"], "ip": ["tcp:8443"]},
+  // phoenixd's API and LNbits, for satbook
+  {"src": ["tag:satbook"], "dst": ["tag:pay"], "ip": ["tcp:9740", "tcp:8443"]},
+],
+"nodeAttrs": [{"target": ["tag:pay"], "attr": ["funnel"]}],
 ```
 
 Nothing else should reach `tag:pay` except your own devices on the LNbits admin
