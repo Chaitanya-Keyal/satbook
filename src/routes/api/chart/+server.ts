@@ -40,7 +40,7 @@ export const GET: RequestHandler = async () => {
 					break;
 				case 'SELL':
 				case 'SPEND':
-					sats -= tx.amountSats;
+					sats -= tx.amountSats + tx.feeSats;
 					investedMinor -= tx.inrValueMinor ?? 0;
 					break;
 				case 'TRANSFER':
