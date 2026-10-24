@@ -9,11 +9,13 @@ import {
 	formatFiatMinor,
 	formatRateValue,
 	initialTriad,
+	marketResetAnchor,
 	parseBtcText,
 	parseFiatText,
 	parseRateText,
 	parseSatsText,
 	rateEdited,
+	resetRateToMarket,
 	setPrefilledRate,
 	type TriadState
 } from '../src/lib/components/tx-form/triad';
@@ -123,6 +125,69 @@ describe('triad state machine', () => {
 		editField(s, 'rate', 6_000_000);
 		editField(s, 'fiat', null);
 		expect(s.sats).toBeNull();
+	});
+});
+
+describe('market-rate reset', () => {
+	test('undoing a typed rate keeps the BTC typed alongside it', () => {
+		const s = initialTriad();
+		setPrefilledRate(s, 5_000_000);
+		editField(s, 'btc', 1_000_000);
+		editField(s, 'rate', 5_500_000);
+		expect(s.fiatMinor).toBe(5_500_000);
+		resetRateToMarket(s, 5_000_000);
+		expect(s.manual).toEqual(['btc']);
+		expect(s.sats).toBe(1_000_000);
+		expect(s.fiatMinor).toBe(5_000_000);
+		expect(rateEdited(s)).toBe(false);
+		expect(s.ratePrefilled).toBe(true);
+	});
+
+	test('undoing a typed rate keeps the fiat typed alongside it', () => {
+		const s = initialTriad();
+		editField(s, 'fiat', 5_000_000); // ₹50,000
+		editField(s, 'rate', 4_000_000);
+		expect(s.sats).toBe(1_250_000);
+		resetRateToMarket(s, 5_000_000);
+		expect(marketResetAnchor(s)).toBe('fiat');
+		expect(s.fiatMinor).toBe(5_000_000);
+		expect(s.sats).toBe(1_000_000);
+	});
+
+	test('a rate derived from both amounts resets around the BTC amount', () => {
+		// The edit-form seed: both stored amounts manual, rate derived.
+		const s = initialTriad();
+		s.sats = 2_000_000;
+		s.fiatMinor = 9_000_000;
+		s.rate = 4_500_000;
+		s.manual = ['btc', 'fiat'];
+		expect(derivedField(s)).toBe('rate');
+		resetRateToMarket(s, 5_000_000);
+		expect(s.manual).toEqual(['btc']);
+		expect(derivedField(s)).toBe('fiat');
+		expect(s.sats).toBe(2_000_000);
+		expect(s.fiatMinor).toBe(10_000_000);
+	});
+
+	test('after a reset, later fetches drive the rate again', () => {
+		const s = initialTriad();
+		editField(s, 'btc', 1_000_000);
+		editField(s, 'rate', 5_500_000);
+		setPrefilledRate(s, 4_800_000); // ignored: rate is the user's
+		expect(s.rate).toBe(5_500_000);
+		resetRateToMarket(s, 5_000_000);
+		setPrefilledRate(s, 4_800_000); // timestamp moved
+		expect(s.rate).toBe(4_800_000);
+		expect(s.fiatMinor).toBe(4_800_000);
+	});
+
+	test('with no amounts, the reset just restores the prefill', () => {
+		const s = initialTriad();
+		editField(s, 'rate', 5_500_000);
+		resetRateToMarket(s, 5_000_000);
+		expect(s.manual).toEqual([]);
+		expect(s.rate).toBe(5_000_000);
+		expect(derivedField(s)).toBeNull();
 	});
 });
 

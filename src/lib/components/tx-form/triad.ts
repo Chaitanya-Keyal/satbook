@@ -92,6 +92,32 @@ export function setPrefilledRate(s: TriadState, rate: number | null): void {
 	recomputeTriad(s);
 }
 
+/**
+ * The amount a market-rate reset keeps (the other one recomputes). Undoing a
+ * typed rate keeps whichever amount was typed alongside it; when both amounts
+ * were typed (the rate derived from them, as when editing a saved tx) BTC wins —
+ * it is the wallet/chain figure, the fiat is its valuation.
+ */
+export function marketResetAnchor(s: TriadState): Exclude<TriField, 'rate'> | null {
+	const kept = s.manual.filter((f): f is Exclude<TriField, 'rate'> => f !== 'rate');
+	if (kept.length === 1) return kept[0];
+	if (kept.length === 2 || s.sats != null) return 'btc';
+	return s.fiatMinor != null ? 'fiat' : null;
+}
+
+/**
+ * Hand the rate back to the market: `rate` becomes a prefill again (later
+ * timestamp/currency changes refetch it) and only the anchor amount stays
+ * manual, so the other amount recomputes from it.
+ */
+export function resetRateToMarket(s: TriadState, rate: number): void {
+	const anchor = marketResetAnchor(s);
+	s.manual = anchor ? [anchor] : [];
+	s.rate = rate;
+	s.ratePrefilled = true;
+	recomputeTriad(s);
+}
+
 /** "Save & add another": clear amounts, keep the rate (and its provenance). */
 export function clearAmounts(s: TriadState): void {
 	s.sats = null;

@@ -6,6 +6,7 @@
 	// TriadState ($state proxy) and rate/FX fetch orchestration; this component
 	// renders it and applies user edits.
 	import ArrowRight from '@lucide/svelte/icons/arrow-right';
+	import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
 	import type { FiatCurrency } from '$lib/types';
 	import { formatInr, formatRateInr, parseFiatShorthand } from '$lib/utils/money';
 	import BtcAmountInput from './BtcAmountInput.svelte';
@@ -15,6 +16,7 @@
 		editField,
 		formatFiatMinor,
 		formatRateValue,
+		marketResetAnchor,
 		parseFiatText,
 		parseRateText,
 		type TriadState,
@@ -41,6 +43,8 @@
 		btcChip = null,
 		onedit,
 		onfieldblur,
+		onresetrate,
+		onresetfx,
 		amountError = null,
 		fiatError = null,
 		fxError = null
@@ -58,6 +62,10 @@
 		btcChip?: string | null;
 		onedit?: (field: TriField) => void;
 		onfieldblur?: (field: TriField | 'fx') => void;
+		/** Present while the rate is the user's: hands it back to the market. */
+		onresetrate?: () => void;
+		/** Present while the FX rate is typed or saved: refetches it. */
+		onresetfx?: () => void;
 		amountError?: string | null;
 		fiatError?: string | null;
 		fxError?: string | null;
@@ -129,11 +137,31 @@
 		tri.fiatMinor != null && fx.rate != null ? Math.round(tri.fiatMinor * fx.rate) : null
 	);
 
+	const resetRateHint = $derived(
+		`Use the market rate at this time — ${
+			marketResetAnchor(tri) === 'fiat'
+				? 'the value stays and the BTC amount is recomputed'
+				: 'the BTC amount stays and the value is recomputed'
+		}`
+	);
+
 	const CURRENCIES = ['INR', 'USD', 'EUR'] as const;
 	const inputBase =
 		'h-9 w-full rounded-md border bg-surface num text-[13px] transition-colors duration-100 placeholder:text-muted/50';
 	const labelCls = 'text-[11px] font-medium text-muted';
 </script>
+
+{#snippet resetButton(onclick: () => void, title: string)}
+	<button
+		type="button"
+		{onclick}
+		{title}
+		class="inline-flex items-center gap-1 text-[11px] text-muted transition-colors duration-100 hover:text-text"
+	>
+		<RotateCcw size={11} aria-hidden="true" />
+		use market rate
+	</button>
+{/snippet}
 
 {#snippet fGlyph()}
 	<span
@@ -208,9 +236,12 @@
 			<p class="mt-1 text-[11px] text-loss">{rateError}</p>
 		{:else if ratePending && tri.rate == null}
 			<p class="mt-1 text-[11px] derived">Fetching rate…</p>
-		{:else if rateChip}
-			<p class="mt-1">
-				<span class="rounded-full bg-surface-2 px-1.5 py-px text-[10px] derived">{rateChip}</span>
+		{:else if rateChip || (onresetrate && !ratePending)}
+			<p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+				{#if rateChip}
+					<span class="rounded-full bg-surface-2 px-1.5 py-px text-[10px] derived">{rateChip}</span>
+				{/if}
+				{#if onresetrate && !ratePending}{@render resetButton(onresetrate, resetRateHint)}{/if}
 			</p>
 		{/if}
 		{#if currency !== 'INR' && tri.rate != null && fx.rate != null}
@@ -310,6 +341,7 @@
 				fetched · {fx.label}
 			</span>
 		{/if}
+		{#if onresetfx}{@render resetButton(onresetfx, 'Use the reference rate for this date')}{/if}
 		{#if inrRecordedMinor != null}
 			<span class="text-muted">
 				<ArrowRight size={12} class="inline-block align-middle" aria-hidden="true" />

@@ -42,6 +42,7 @@
 		editField,
 		initialTriad,
 		rateEdited,
+		resetRateToMarket,
 		setPrefilledRate,
 		type TriadState,
 		type TriField
@@ -374,6 +375,19 @@
 	);
 	let rateFailed = $state(false);
 	let ratePending = $state(false);
+	/** The last "market rate" reset found no rate; the typed one stays. */
+	let rateResetFailed = $state(false);
+	/** The rate is the user's (typed, or derived from typed amounts), not the market's. */
+	const rateOffMarket = $derived(rateEdited(tri) || derivedField(tri) === 'rate');
+
+	function useMarketRate() {
+		rateResetFailed = false;
+		void refreshRates(true);
+	}
+	function useMarketFx() {
+		fxTouched = false;
+		void refreshRates();
+	}
 	/** ₹/BTC at the current timestamp — feeds TRANSFER fee valuation. */
 	let inrPerBtc = $state<number | null>(live?.btcInr ?? null);
 
@@ -397,7 +411,8 @@
 	// --- rate/FX fetch (mount, currency change immediate; ts change debounced 600ms)
 
 	let ratesSeq = 0;
-	async function refreshRates() {
+	/** `force` is the "market rate" reset: it also overrides a typed or derived rate. */
+	async function refreshRates(force = false) {
 		const mySeq = ++ratesSeq;
 		const forTs = ts;
 		const cur = currency;
@@ -423,9 +438,18 @@
 					fx.label = null;
 				}
 			}
-			if (!rateEdited(tri) && derivedField(tri) !== 'rate') {
-				const fxRate = cur === 'INR' ? 1 : fx.rate;
-				const r = p.btcInr != null && fxRate != null && fxRate > 0 ? p.btcInr / fxRate : null;
+			const fxRate = cur === 'INR' ? 1 : fx.rate;
+			const r = p.btcInr != null && fxRate != null && fxRate > 0 ? p.btcInr / fxRate : null;
+			if (force) {
+				if (r != null) {
+					resetRateToMarket(tri, r);
+					triadDirty = true;
+					rateProvenance = p.btcInrSource;
+					rateChip = chipFor(p.btcInrSource, forTs);
+				} else {
+					rateResetFailed = true;
+				}
+			} else if (!rateEdited(tri) && derivedField(tri) !== 'rate') {
 				setPrefilledRate(tri, r);
 				if (r != null) {
 					rateProvenance = p.btcInrSource;
@@ -445,7 +469,9 @@
 				fx.state = 'failed';
 				fx.label = null;
 			}
-			if (!rateEdited(tri) && derivedField(tri) !== 'rate') {
+			if (force) {
+				rateResetFailed = true;
+			} else if (!rateEdited(tri) && derivedField(tri) !== 'rate') {
 				setPrefilledRate(tri, null);
 				rateProvenance = null;
 				rateChip = null;
@@ -561,6 +587,7 @@
 	function onTriEdit(field: TriField) {
 		triadDirty = true;
 		if (field === 'btc') btcFromChain = false;
+		rateResetFailed = false;
 		if (field === 'rate') {
 			rateChip = 'manual';
 			rateProvenance = null;
@@ -1131,9 +1158,19 @@
 					fx.state = 'manual';
 					fx.label = null;
 				}}
-				rateChip={ratePending ? null : rateChip}
+				rateChip={ratePending
+					? null
+					: triadDirty && derivedField(tri) === 'rate'
+						? 'from amounts'
+						: rateChip}
 				rateError={showErr('rate') ??
-					(rateFailed && tri.rate == null ? 'No rate found — enter manually' : null)}
+					(rateResetFailed
+						? 'No market rate found for this time'
+						: rateFailed && tri.rate == null
+							? 'No rate found — enter manually'
+							: null)}
+				onresetrate={rateOffMarket ? useMarketRate : undefined}
+				onresetfx={fx.state === 'manual' || fx.state === 'saved' ? useMarketFx : undefined}
 				{ratePending}
 				btcLabel={disposalType ? 'BTC sold' : 'BTC received'}
 				fiatLabel={type === 'BUY'
