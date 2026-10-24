@@ -64,6 +64,7 @@ export const load: PageServerLoad = async () => {
 			amountSats: t.amountSats,
 			feeSats: t.feeSats,
 			txid: t.txid,
+			refKind: t.refKind,
 			fromName: t.fromWalletId != null ? (names.get(t.fromWalletId) ?? '?') : '?',
 			toName: t.toWalletId != null ? (names.get(t.toWalletId) ?? '?') : '?'
 		}));

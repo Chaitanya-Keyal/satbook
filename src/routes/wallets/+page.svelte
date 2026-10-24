@@ -387,7 +387,7 @@
 						<th class="py-2 pr-4 text-right label-caps font-medium">amount</th>
 						<th class="py-2 pr-4 text-right label-caps font-medium">fee</th>
 						<th class="py-2 pr-4 text-left label-caps font-medium">date</th>
-						<th class="py-2 text-left label-caps font-medium">txid</th>
+						<th class="py-2 text-left label-caps font-medium">reference</th>
 					</tr>
 				</thead>
 				<tbody>
@@ -408,7 +408,12 @@
 							</td>
 							<td class="py-2 pr-4 num whitespace-nowrap">{formatIstDateShort(t.ts)}</td>
 							<td class="py-2 num whitespace-nowrap">
-								{#if t.txid}
+								{#if t.txid && t.refKind === 'lightning'}
+									<span
+										title="Lightning payment hash {t.txid} — settled off-chain, no explorer record"
+										class="text-muted">{t.txid.slice(0, 10)}…</span
+									>
+								{:else if t.txid}
 									<a
 										href="https://blockstream.info/tx/{t.txid}"
 										target="_blank"
