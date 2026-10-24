@@ -9,6 +9,7 @@ delete process.env.ADMIN_PASSWORD;
 const { createTx, createTxPair, deleteTx, getLedger, getPortfolio, previewDraft, updateTx } =
 	await import('../src/lib/server/ledger');
 const { db, schema } = await import('../src/lib/server/db');
+const { draftFromFormData } = await import('../src/lib/components/tx-form/draft');
 const { eq } = await import('drizzle-orm');
 
 const DAY = 86400;
@@ -274,6 +275,59 @@ describe('getPortfolio', () => {
 		expect(p.walletBalancesSats[1]).toBe(399_500);
 		expect(p.walletBalancesSats[2]).toBe(1_000_000);
 		expect(p.netInvestedMinor).toBe(10_020_000 + 2_000_000 - 1_800_000 - 90_000);
+	});
+});
+
+describe('form round-trip (the path the UI actually takes)', () => {
+	// Earlier tests call createTx directly, which is how a whitelist omission in
+	// draft.ts once slipped through: these go through draftFromFormData first.
+	const post = (fields: Record<string, string>) => {
+		const fd = new FormData();
+		for (const [k, v] of Object.entries(fields)) fd.set(k, v);
+		return draftFromFormData(fd);
+	};
+
+	test('income kind and counterparty survive the form', () => {
+		const res = createTx(
+			post({
+				type: 'INCOME',
+				ts: String(T0 + 10 * DAY),
+				walletId: '1',
+				amountSats: '50000',
+				fiatCurrency: 'INR',
+				fiatAmountMinor: '312345',
+				fxRateToInr: '1',
+				inrValueMinor: '312345',
+				incomeKind: 'donation',
+				counterparty: 'A. Donor',
+				notes: 'Hardware project'
+			})
+		);
+		expect(res.ok).toBe(true);
+		const row = getLedger().find((t) => t.id === (res as { id: number }).id)!;
+		expect(row.incomeKind).toBe('donation');
+		expect(row.counterparty).toBe('A. Donor');
+		// shared database: leave balances as later tests expect them
+		db.delete(schema.transactions).where(eq(schema.transactions.id, row.id)).run();
+	});
+
+	test('a Lightning payment hash keeps its kind through the form', () => {
+		const res = createTx(
+			post({
+				type: 'TRANSFER',
+				ts: String(T0 + 10 * DAY),
+				fromWalletId: '1',
+				toWalletId: '2',
+				amountSats: '1000',
+				feeSats: '10',
+				txid: 'd'.repeat(64),
+				refKind: 'lightning'
+			})
+		);
+		expect(res.ok).toBe(true);
+		const id = (res as { id: number }).id;
+		expect(getLedger().find((t) => t.id === id)!.refKind).toBe('lightning');
+		db.delete(schema.transactions).where(eq(schema.transactions.id, id)).run();
 	});
 });
 

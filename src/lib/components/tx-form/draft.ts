@@ -3,6 +3,8 @@
 // side in ledger.ts — this only plucks the known fields, so a stray form field
 // can never smuggle extra columns into the insert.
 
+import type { DraftTx } from '../../types';
+
 const FIELDS = [
 	'type',
 	'ts',
@@ -21,8 +23,18 @@ const FIELDS = [
 	'enteredRate',
 	'rateSource',
 	'txid',
+	'refKind',
+	'incomeKind',
+	'counterparty',
 	'notes'
 ] as const;
+
+// Every draft field must be plucked here. A field the form posts but this list
+// omits is dropped silently — it once cost three columns' worth of entries —
+// so a missing one is now a compile error rather than lost data.
+type Unplucked = Exclude<keyof Omit<DraftTx, 'id'>, (typeof FIELDS)[number]>;
+const _everyFieldPlucked: [Unplucked] extends [never] ? true : Unplucked = true;
+void _everyFieldPlucked;
 
 export function draftFromFormData(form: FormData): Record<string, string | null> {
 	const out: Record<string, string | null> = {};
