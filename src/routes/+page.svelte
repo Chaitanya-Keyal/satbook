@@ -4,7 +4,7 @@
 	import Tile from '$lib/components/Tile.svelte';
 	import TypeBadge from '$lib/components/TypeBadge.svelte';
 	import { toggleUnit, unit } from '$lib/stores/unit.svelte';
-	import { formatAmount, formatUsd } from '$lib/utils/display';
+	import { formatAmount, formatUsd, INCOME_KIND_LABEL } from '$lib/utils/display';
 	import {
 		formatInr,
 		formatInrExact,
@@ -83,17 +83,22 @@
 	const SEG_COLORS = ['#8b8d96', '#5c5f68', '#3c3f47'];
 
 	// Auto-composed one-liners per spec §2 — "Bought 120 000 sats · Cold storage".
+	// A counterparty, when known, says more than the wallet does.
 	function describe(t: RecentRow): string {
 		const amount = formatAmount(t.amountSats, unit.value);
+		const where = ` · ${t.walletName ?? '?'}`;
+		const cp = t.counterparty;
 		switch (t.type) {
-			case 'INCOME':
-				return t.notes ?? `Income ${amount} · ${t.walletName ?? '?'}`;
+			case 'INCOME': {
+				const kind = INCOME_KIND_LABEL[t.incomeKind ?? 'income'];
+				return cp ? `${kind} from ${cp}` : (t.notes ?? `${kind} ${amount}${where}`);
+			}
 			case 'BUY':
-				return `Bought ${amount} · ${t.walletName ?? '?'}`;
+				return `Bought ${amount}${cp ? ` from ${cp}` : where}`;
 			case 'SELL':
-				return `Sold ${amount} · ${t.walletName ?? '?'}`;
+				return `Sold ${amount}${cp ? ` to ${cp}` : where}`;
 			case 'SPEND':
-				return `Spent ${amount} · ${t.walletName ?? '?'}`;
+				return `Spent ${amount}${cp ? ` at ${cp}` : where}`;
 			case 'TRANSFER':
 				return `Transfer ${t.fromName ?? '?'} to ${t.toName ?? '?'}`;
 		}

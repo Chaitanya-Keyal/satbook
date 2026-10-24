@@ -11,7 +11,14 @@
 	import TypeBadge from '$lib/components/TypeBadge.svelte';
 	import { unit } from '$lib/stores/unit.svelte';
 	import type { TxType } from '$lib/types';
-	import { formatAmount, formatUsd, signedAmount } from '$lib/utils/display';
+	import {
+		formatAmount,
+		formatUsd,
+		INCOME_KIND_LABEL,
+		signedAmount,
+		txDetails,
+		type DetailPart
+	} from '$lib/utils/display';
 	import { fyOf } from '$lib/utils/fy';
 	import { formatInr, formatRateInr, formatSats, mulDivRound } from '$lib/utils/money';
 	import { formatIstDateShort, formatIstFull, formatUtcFull } from '$lib/utils/time';
@@ -22,11 +29,6 @@
 	type TxRow = PageData['txs'][number];
 
 	const EM = '—';
-	const INCOME_KIND_LABEL: Record<string, string> = {
-		donation: 'Donation',
-		grant: 'Grant',
-		income: 'Income'
-	};
 	const FILTER_TRIGGER =
 		'rounded-md border border-border bg-surface py-1 pl-2.5 pr-7 text-xs transition-colors duration-100 hover:border-muted/60';
 	const TX_TYPES: TxType[] = ['INCOME', 'BUY', 'SELL', 'SPEND', 'TRANSFER'];
@@ -89,9 +91,11 @@
 			if (fyF !== '' && fyOf(t.ts) !== fyF) return false;
 			const needle = q.trim().toLowerCase();
 			if (needle !== '') {
-				const noteHit = (t.notes ?? '').toLowerCase().includes(needle);
+				const textHit = [t.notes, t.counterparty].some((v) =>
+					(v ?? '').toLowerCase().includes(needle)
+				);
 				const txidHit = (t.txid ?? '').toLowerCase().startsWith(needle);
-				if (!noteHit && !txidHit) return false;
+				if (!textHit && !txidHit) return false;
 			}
 			return true;
 		})
@@ -317,6 +321,19 @@
 	{/if}
 {/snippet}
 
+{#snippet details(parts: DetailPart[])}
+	{#if parts.length === 0}
+		<span class="text-muted">{EM}</span>
+	{:else}
+		{#each parts as part, i (i)}
+			{#if i > 0}<span class="mx-1.5 text-muted">·</span>{/if}<span
+				class={part.tone === 'lead' ? '' : part.tone === 'meta' ? 'num text-muted' : 'text-muted'}
+				>{part.text}</span
+			>
+		{/each}
+	{/if}
+{/snippet}
+
 {#snippet expansion(t: TxRow)}
 	{@const disposal = data.disposals[t.id]}
 	{@const lot = data.openLots[t.id]}
@@ -371,14 +388,30 @@
 						</div>
 					</div>
 				{/if}
-				{#if t.type === 'INCOME' && (t.incomeKind || t.counterparty)}
+				{#if t.type === 'INCOME' && t.incomeKind}
 					<div>
-						<p class="label-caps">income</p>
-						<p class="mt-0.5">
-							{INCOME_KIND_LABEL[t.incomeKind ?? 'income']}{t.counterparty
-								? ` · from ${t.counterparty}`
-								: ''}
+						<p class="label-caps">income kind</p>
+						<p class="mt-0.5">{INCOME_KIND_LABEL[t.incomeKind]}</p>
+					</div>
+				{/if}
+				{#if t.counterparty}
+					<div>
+						<p class="label-caps">
+							{t.type === 'INCOME'
+								? 'from'
+								: t.type === 'BUY'
+									? 'seller'
+									: t.type === 'SELL'
+										? 'buyer'
+										: 'paid to'}
 						</p>
+						<p class="mt-0.5">{t.counterparty}</p>
+					</div>
+				{/if}
+				{#if t.notes}
+					<div>
+						<p class="label-caps">note</p>
+						<p class="mt-0.5 break-words">{t.notes}</p>
 					</div>
 				{/if}
 				{#if rate != null}
@@ -491,7 +524,7 @@
 		{@render filterControls()}
 		<input
 			type="search"
-			placeholder="Search note or txid · /"
+			placeholder="Search notes, names or txid · /"
 			aria-label="search transactions"
 			bind:this={searchEl}
 			bind:value={q}
@@ -502,7 +535,7 @@
 	<div class="flex items-center gap-2 md:hidden">
 		<input
 			type="search"
-			placeholder="Search note or txid"
+			placeholder="Search notes, names or txid"
 			aria-label="search transactions"
 			bind:value={q}
 			oninput={syncUrl}
@@ -553,7 +586,7 @@
 					</th>
 					<th class="py-2 pr-3 text-right label-caps font-medium">inr</th>
 					<th class="py-2 pr-3 text-right label-caps font-medium">rate ₹/btc</th>
-					<th class="py-2 pr-3 text-left label-caps font-medium">note</th>
+					<th class="py-2 pr-3 text-left label-caps font-medium">details</th>
 					<th class="py-2" aria-label="expand"></th>
 				</tr>
 			</thead>
@@ -562,6 +595,7 @@
 					{@const btc = btcCell(t)}
 					{@const inr = inrCell(t)}
 					{@const rate = rateOf(t)}
+					{@const det = txDetails(t)}
 					{@const open = expandedId === t.id}
 					<!-- svelte-ignore a11y_no_noninteractive_element_to_interactive_role -->
 					<tr
@@ -595,8 +629,11 @@
 						<td class="py-2 pr-3 text-right num whitespace-nowrap text-muted">
 							{rate != null ? formatRateInr(rate) : EM}
 						</td>
-						<td class="max-w-[220px] truncate py-2 pr-3 text-muted" title={t.notes ?? undefined}>
-							{t.notes ?? ''}
+						<td
+							class="max-w-[300px] truncate py-2 pr-3"
+							title={det.map((p) => p.text).join(' · ') || undefined}
+						>
+							{@render details(det)}
 						</td>
 						<td class="py-2 text-right text-muted">
 							<ChevronRight
@@ -621,6 +658,7 @@
 		{#each filtered as t (t.id)}
 			{@const btc = btcCell(t)}
 			{@const inr = inrCell(t)}
+			{@const det = txDetails(t)}
 			{@const open = expandedId === t.id}
 			<li
 				id="tx-m-{t.id}"
@@ -647,6 +685,9 @@
 						<span class="num text-[13px] {btc.cls}">{btc.text}</span>
 						<span class="num text-xs {inr?.cls ?? 'text-muted'}">{inr?.text ?? EM}</span>
 					</span>
+					{#if det.length > 0}
+						<span class="mt-1 block truncate text-xs">{@render details(det)}</span>
+					{/if}
 				</button>
 				{#if open}
 					<div class="border-t border-border/60 px-2">{@render expansion(t)}</div>

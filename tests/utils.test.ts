@@ -1,6 +1,7 @@
 // Whole suite runs under TZ=America/New_York (see package.json test script) to
 // prove every IST/FY computation is independent of the runtime timezone.
 import { describe, expect, test } from 'bun:test';
+import { formatForeignMinor, txDetails } from '../src/lib/utils/display';
 import { fyOf, fyRange, fySpan, fyStartYear } from '../src/lib/utils/fy';
 import {
 	btcToSats,
@@ -142,5 +143,58 @@ describe('financial year', () => {
 		expect(() => fyStartYear('2025-26')).toThrow();
 		const span = fySpan(istInputToUtcSec('2025-08-19T11:20'), istInputToUtcSec('2026-06-11T09:05'));
 		expect(span).toEqual(['FY2025-26', 'FY2026-27']);
+	});
+});
+
+describe('ledger details line', () => {
+	const ROW = {
+		type: 'INCOME' as const,
+		incomeKind: null,
+		counterparty: null,
+		notes: null,
+		fiatCurrency: 'INR' as const,
+		fiatAmountMinor: 500_000,
+		feeSats: 0
+	};
+	const text = (t: Parameters<typeof txDetails>[0]) =>
+		txDetails(t)
+			.map((p) => `${p.tone}:${p.text}`)
+			.join(' | ');
+
+	test('nothing to add stays empty', () => {
+		expect(txDetails(ROW)).toEqual([]);
+		// the plain "income" kind repeats the INCOME badge
+		expect(txDetails({ ...ROW, incomeKind: 'income' })).toEqual([]);
+	});
+
+	test('kind and counterparty lead, the note follows, quiet facts last', () => {
+		expect(
+			text({
+				...ROW,
+				incomeKind: 'donation',
+				counterparty: 'A. Donor',
+				notes: 'For the hardware project',
+				fiatCurrency: 'USD',
+				fiatAmountMinor: 150_000
+			})
+		).toBe('lead:Donation | lead:A. Donor | note:For the hardware project | meta:$1,500');
+	});
+
+	test('a sale shows its buyer and network fee', () => {
+		expect(text({ ...ROW, type: 'SELL', counterparty: 'A. Buyer', feeSats: 1234 })).toBe(
+			`lead:A. Buyer | meta:fee 1${THIN}234 sats`
+		);
+	});
+
+	test('a transfer with a fee says so', () => {
+		expect(
+			text({ ...ROW, type: 'TRANSFER', fiatCurrency: null, fiatAmountMinor: null, feeSats: 300 })
+		).toBe('meta:fee 300 sats');
+	});
+
+	test('foreign amounts show cents only when nonzero', () => {
+		expect(formatForeignMinor(150_000, 'USD')).toBe('$1,500');
+		expect(formatForeignMinor(24_550, 'EUR')).toBe('€245.50');
+		expect(formatForeignMinor(-5, 'USD')).toBe(`${MINUS}$0.05`);
 	});
 });

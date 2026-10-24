@@ -98,6 +98,12 @@
 		grant: 'Paid for a deliverable, so the gift threshold does not apply.',
 		income: 'A stipend or fee for work — ordinary income at slab rates.'
 	};
+	/** Who's on the other side, per type (INCOME's "From" sits beside its kind). */
+	const COUNTERPARTY: Record<'BUY' | 'SELL' | 'SPEND', { label: string; placeholder: string }> = {
+		BUY: { label: 'From', placeholder: 'seller, if bought peer-to-peer (optional)' },
+		SELL: { label: 'To', placeholder: 'buyer (optional)' },
+		SPEND: { label: 'To', placeholder: 'merchant or payee (optional)' }
+	};
 	const FUTURE_SLACK_SEC = 300;
 	const nowSec = () => Math.floor(Date.now() / 1000);
 
@@ -896,6 +902,8 @@
 	<input type="hidden" name="refKind" value={refKind} />
 	{#if type === 'INCOME'}
 		<input type="hidden" name="incomeKind" value={incomeKind} />
+	{/if}
+	{#if type !== 'TRANSFER'}
 		<input type="hidden" name="counterparty" value={counterparty.trim()} />
 	{/if}
 	<input type="hidden" name="notes" value={note} />
@@ -1384,17 +1392,36 @@
 		</div>
 	{/if}
 
-	<!-- note -->
-	<div>
-		<label class={labelCls} for="tx-note">Note</label>
-		<input
-			id="tx-note"
-			type="text"
-			bind:value={note}
-			placeholder="optional"
-			autocomplete="off"
-			class="mt-1 {inputCls}"
-		/>
+	<!-- counterparty (non-income) + note -->
+	<div
+		class="grid gap-3 {type === 'BUY' || type === 'SELL' || type === 'SPEND'
+			? 'sm:grid-cols-2'
+			: ''}"
+	>
+		{#if type === 'BUY' || type === 'SELL' || type === 'SPEND'}
+			<div>
+				<label class={labelCls} for="tx-counterparty">{COUNTERPARTY[type].label}</label>
+				<input
+					id="tx-counterparty"
+					type="text"
+					bind:value={counterparty}
+					placeholder={COUNTERPARTY[type].placeholder}
+					autocomplete="off"
+					class="mt-1 {inputCls}"
+				/>
+			</div>
+		{/if}
+		<div>
+			<label class={labelCls} for="tx-note">Note</label>
+			<input
+				id="tx-note"
+				type="text"
+				bind:value={note}
+				placeholder="optional"
+				autocomplete="off"
+				class="mt-1 {inputCls}"
+			/>
+		</div>
 	</div>
 
 	<!-- gain preview (spec §3.4/§3.7) — dry-run of the FIFO engine -->

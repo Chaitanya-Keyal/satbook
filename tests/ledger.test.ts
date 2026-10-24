@@ -398,7 +398,7 @@ describe('lightning + income fields', () => {
 		expect(getLedger().find((t) => t.id === (none as { id: number }).id)!.refKind).toBeNull();
 	});
 
-	test('income kind and counterparty persist on INCOME and are dropped elsewhere', () => {
+	test('income kind is INCOME-only; counterparty is dropped only on TRANSFER', () => {
 		const donation = createTx({
 			...BASE,
 			type: 'INCOME',
@@ -417,7 +417,7 @@ describe('lightning + income fields', () => {
 		expect(row.incomeKind).toBe('donation');
 		expect(row.counterparty).toBe('A. Donor');
 
-		// a SELL carries neither, even if the form leaves stale values behind
+		// a SELL keeps its buyer but drops a stale income kind left by the form
 		const sell = createTx({
 			...BASE,
 			type: 'SELL',
@@ -429,12 +429,27 @@ describe('lightning + income fields', () => {
 			fxRateToInr: 1,
 			inrValueMinor: 1000,
 			incomeKind: 'donation',
-			counterparty: 'someone'
+			counterparty: 'A. Buyer'
 		});
 		expect(sell.ok).toBe(true);
 		const srow = getLedger().find((t) => t.id === (sell as { id: number }).id)!;
 		expect(srow.incomeKind).toBeNull();
-		expect(srow.counterparty).toBeNull();
+		expect(srow.counterparty).toBe('A. Buyer');
+
+		// a TRANSFER is between own wallets — no counterparty
+		const transfer = createTx({
+			...BASE,
+			type: 'TRANSFER',
+			ts: T0 + 9 * DAY,
+			fromWalletId: 1,
+			toWalletId: 2,
+			amountSats: 1000,
+			counterparty: 'someone'
+		});
+		expect(transfer.ok).toBe(true);
+		const trow = getLedger().find((t) => t.id === (transfer as { id: number }).id)!;
+		expect(trow.counterparty).toBeNull();
+		db.delete(schema.transactions).where(eq(schema.transactions.id, trow.id)).run();
 	});
 
 	test('an unknown income kind is rejected', () => {

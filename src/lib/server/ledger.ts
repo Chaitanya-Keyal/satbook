@@ -239,18 +239,16 @@ function parseDraft(input: unknown): ParseResult {
 		else refKind = raw;
 	}
 
-	// Income kind and counterparty are INCOME-only; anything else is dropped.
+	// Income kind is INCOME-only. The counterparty (payer, seller, buyer or
+	// payee) belongs to every type but TRANSFER, which is between own wallets.
 	let incomeKind: IncomeKind | null = null;
-	let counterparty: string | null = null;
-	if (type === 'INCOME') {
-		if (!isNullish(o.incomeKind)) {
-			const raw = String(o.incomeKind);
-			if (!INCOME_KINDS.includes(raw as IncomeKind))
-				errors.push(`incomeKind must be one of ${INCOME_KINDS.join(', ')}`);
-			else incomeKind = raw as IncomeKind;
-		}
-		counterparty = toStr(o.counterparty);
+	if (type === 'INCOME' && !isNullish(o.incomeKind)) {
+		const raw = String(o.incomeKind);
+		if (!INCOME_KINDS.includes(raw as IncomeKind))
+			errors.push(`incomeKind must be one of ${INCOME_KINDS.join(', ')}`);
+		else incomeKind = raw as IncomeKind;
 	}
+	const counterparty = type === 'TRANSFER' ? null : toStr(o.counterparty);
 
 	// Fields not meaningful for the type are normalized to null (a stale field
 	// left over from a type switch in the form must not block the save).

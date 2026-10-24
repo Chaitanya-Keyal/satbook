@@ -1,7 +1,7 @@
 import { db, schema } from '$lib/server/db';
 import { getLedger, getPortfolio } from '$lib/server/ledger';
 import { getLivePrice, getUsdInrNow } from '$lib/server/rates';
-import type { LivePricePayload, TxType } from '$lib/types';
+import type { IncomeKind, LivePricePayload, TxType } from '$lib/types';
 import { fyOf } from '$lib/utils/fy';
 import type { PageServerLoad } from './$types';
 
@@ -12,6 +12,8 @@ interface RecentRow {
 	amountSats: number;
 	inrValueMinor: number | null;
 	notes: string | null;
+	incomeKind: IncomeKind | null;
+	counterparty: string | null;
 	walletName: string | null;
 	fromName: string | null;
 	toName: string | null;
@@ -56,6 +58,8 @@ export const load: PageServerLoad = async () => {
 			amountSats: t.amountSats,
 			inrValueMinor: t.inrValueMinor,
 			notes: t.notes,
+			incomeKind: t.incomeKind,
+			counterparty: t.counterparty,
 			walletName: t.walletId != null ? (names.get(t.walletId) ?? null) : null,
 			fromName: t.fromWalletId != null ? (names.get(t.fromWalletId) ?? null) : null,
 			toName: t.toWalletId != null ? (names.get(t.toWalletId) ?? null) : null
