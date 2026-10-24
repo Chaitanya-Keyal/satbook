@@ -53,8 +53,10 @@ export const transactions = sqliteTable(
 		// TRANSFER: sats credited to the destination; SELL/SPEND: sats the
 		// counterparty received. The paying wallet is debited amountSats + feeSats.
 		amountSats: integer('amount_sats').notNull(),
-		// Network fee (TRANSFER/SELL/SPEND): consumed from the FIFO queue, never a
-		// taxable event, never deductible (s.115BBH allows only cost of acquisition).
+		// Fee (TRANSFER/SELL/SPEND: network fee; INCOME: sats the receiving node
+		// kept on arrival, e.g. a Lightning liquidity purchase): consumed from the
+		// FIFO queue, never a taxable event, never deductible (s.115BBH allows only
+		// cost of acquisition).
 		feeSats: integer('fee_sats').notNull().default(0),
 		fiatCurrency: text('fiat_currency', { enum: ['INR', 'USD', 'EUR'] }),
 		fiatAmountMinor: integer('fiat_amount_minor'),
@@ -95,7 +97,7 @@ export const transactions = sqliteTable(
 		check(
 			'tx_type_shape',
 			sql`(${t.type} = 'TRANSFER' AND ${t.walletId} IS NULL AND ${t.fromWalletId} IS NOT NULL AND ${t.toWalletId} IS NOT NULL AND ${t.fromWalletId} != ${t.toWalletId})
-			OR (${t.type} != 'TRANSFER' AND ${t.walletId} IS NOT NULL AND ${t.fromWalletId} IS NULL AND ${t.toWalletId} IS NULL AND ${t.inrValueMinor} IS NOT NULL AND ${t.fiatCurrency} IS NOT NULL AND (${t.type} IN ('SELL', 'SPEND') OR ${t.feeSats} = 0))`
+			OR (${t.type} != 'TRANSFER' AND ${t.walletId} IS NOT NULL AND ${t.fromWalletId} IS NULL AND ${t.toWalletId} IS NULL AND ${t.inrValueMinor} IS NOT NULL AND ${t.fiatCurrency} IS NOT NULL AND (${t.type} IN ('SELL', 'SPEND', 'INCOME') OR ${t.feeSats} = 0))`
 		)
 	]
 );

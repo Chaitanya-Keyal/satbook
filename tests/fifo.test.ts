@@ -363,6 +363,58 @@ describe('6. INCOME lot basis', () => {
 	});
 });
 
+describe('6b. INCOME with a fee taken on arrival', () => {
+	// A Lightning node can keep part of a payment to buy inbound liquidity. The
+	// payer's amount stays the income; the wallet keeps amount − fee; the fee
+	// leaves the queue head untaxed, exactly like a network fee.
+	test('first payment into an empty node: the new lot itself pays the fee', () => {
+		const p = computePortfolio(ledger(income(T0, 30_000, 2_400_000, 1, { feeSats: 21_711 })));
+		expect(p.issues).toEqual([]);
+		expect(p.walletBalancesSats[1]).toBe(8_289);
+		expect(p.openLots).toHaveLength(1);
+		expect(p.openLots[0].remainingSats).toBe(8_289);
+		expect(p.disposals).toEqual([]);
+		expect(p.vdaRows).toEqual([]);
+		// the income is the payer's amount, fee or not
+		expect(p.netInvestedMinor).toBe(2_400_000);
+		expectHoldingsInvariant(p);
+	});
+
+	test('with older lots, the fee comes from the queue head (global FIFO), not the new lot', () => {
+		const p = computePortfolio(
+			ledger(
+				buy(T0, 100_000, 8_000_000, 1),
+				income(T0 + H, 50_000, 4_500_000, 1, { feeSats: 22_000 })
+			)
+		);
+		expect(p.issues).toEqual([]);
+		expect(p.walletBalancesSats[1]).toBe(128_000);
+		const [first, second] = p.openLots;
+		expect(first.lotTxId).toBe(1);
+		expect(first.remainingSats).toBe(78_000);
+		expect(first.remainingCostMinor).toBe(8_000_000 - mulDivRound(8_000_000, 22_000, 100_000));
+		expect(second.lotTxId).toBe(2);
+		expect(second.remainingSats).toBe(50_000);
+		expect(p.disposals).toEqual([]);
+		expectHoldingsInvariant(p);
+	});
+
+	test('a fee larger than the payment draws the rest from the wallet balance', () => {
+		const p = computePortfolio(
+			ledger(buy(T0, 100_000, 8_000_000, 1), income(T0 + H, 1_000, 90_000, 1, { feeSats: 22_000 }))
+		);
+		expect(p.issues).toEqual([]);
+		expect(p.walletBalancesSats[1]).toBe(79_000);
+		expectHoldingsInvariant(p);
+	});
+
+	test('a fee the wallet cannot cover is reported against the INCOME', () => {
+		const p = computePortfolio(ledger(income(T0, 1_000, 90_000, 1, { feeSats: 22_000 })));
+		expect(p.issues.some((i) => i.txId === 1 && i.code === 'NEGATIVE_WALLET_BALANCE')).toBe(true);
+		expectWellFormed(p);
+	});
+});
+
 describe('7. same-timestamp ordering', () => {
 	test('BUY entered after a same-second SELL still ranks first — no INSUFFICIENT_LOTS', () => {
 		const txs = ledger(
