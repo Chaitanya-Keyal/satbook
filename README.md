@@ -62,8 +62,9 @@ bun scripts/import-xlsx.ts your-sheet.xlsx            # dry-run + reconciliation
 bun scripts/import-xlsx.ts your-sheet.xlsx --commit   # write (refuses on any engine issue)
 ```
 
-After importing, set each wallet's kind (hot / cold / exchange) on the Wallets
-screen, then reconcile against the chain — it verifies every row that carries a
+After importing, set each wallet's kind (hot / cold / exchange), layer and
+custody from its menu on the Wallets screen (the importer makes every wallet a
+hot, on-chain, self-custodied one), then reconcile against the chain — it verifies every row that carries a
 txid, splits network fees out of disposal amounts, checks transfer fees, and
 corrects timestamps to on-chain block time (spreadsheet time columns often
 carry a uniform timezone error that no internal check can catch):
