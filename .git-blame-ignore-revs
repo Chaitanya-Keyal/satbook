@@ -1,0 +1,5 @@
+# Whitespace-only commits for `git blame` to skip. GitHub's blame view reads
+# this file; locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: indent with two spaces, like the companion repos (#8)
+a73d1f5f0c1e25433ecbeb942f927e2c879c9225
