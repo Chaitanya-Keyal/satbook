@@ -2,6 +2,7 @@ import { error, fail } from '@sveltejs/kit';
 import { getPortfolio } from '$lib/server/ledger';
 import { lightningConfigState } from '$lib/server/lightning/config';
 import { lightningWallet, listPayments, nodeStatus, TOP_UP_SAT } from '$lib/server/lightning/node';
+import { pendingCount } from '$lib/server/lightning/review';
 import { lastSync, syncLightning } from '$lib/server/lightning/sync';
 import { getLivePrice } from '$lib/server/rates';
 import { renderSVG } from 'uqr';
@@ -33,6 +34,7 @@ export const load: PageServerLoad = async () => {
 			return {
 				sync,
 				status,
+				pending: pendingCount(),
 				payments: nodeId ? listPayments(nodeId) : [],
 				ledgerSats: wallet ? (getPortfolio().walletBalancesSats[wallet.id] ?? 0) : null
 			};

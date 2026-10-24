@@ -154,11 +154,44 @@ mining fee.
 - **Ledger status.** A payment counts as recorded when a ledger row was imported
   for it, or when a row you entered by hand carries its payment hash.
 
+## Recording payments in the ledger
+
+`/lightning/review` lists every payment that isn't in the ledger yet, oldest
+first. Work down the list, so each payment out finds the sats that came in
+before it. The amounts always come from the node; you only say what each
+payment was.
+
+- **Income** — a donation, a grant, or pay.
+  - **Amount:** what the payer sent (the invoice amount). It is valued in INR at
+    the BTC price at the payment's time.
+  - **Fee:** if the payment set off a liquidity purchase, the fee the node kept
+    goes in as a _fee taken on arrival_: consumed untaxed, so the wallet ends up
+    with what the node has.
+  - **Suggestions:** a Lightning Address payment is suggested as a donation
+    (these count toward the ₹50,000 gift total on `/tax`). Its comment becomes
+    the note, and a verified zap fills in the sender's npub.
+- **Transfer** — sats moving between your own wallets.
+  - Examples: the bootstrap from another of your wallets, or a sweep to cold
+    storage (with its on-chain txid).
+  - For a transfer in, add what the sending wallet charged on top. That fee is
+    known only to that wallet.
+- **Spend** — a payment out. It is a disposal, taxed like a sale.
+- **Link** — a payment you already entered by hand. Rows with a matching amount
+  within a day are offered.
+- **Ignore** — leaves a payment out of the ledger. You can restore it later.
+  _Ignore everything before_ skips history you already recorded elsewhere.
+
+Recorded rows carry the source `import:phoenixd` and the payment's import key,
+so the same payment can never be recorded twice. Deleting the row puts the
+payment back up for review. A test-network node's payments are never recorded,
+except on a development server.
+
 ## Limitations
 
 - **On-chain deposits into phoenixd** (swap-ins) don't appear in phoenixd's
   payment list. The balance shows them; record them by hand.
-- **Fee bumps and channel closes** are listed, but are yours to record.
+- **Fee bumps, channel closes, and a liquidity purchase with no matching
+  payment** show up in the review list, but are yours to record by hand.
 - **phoenixd's default top-up size is assumed** for the "next top-up" quote
   (2M). If you run `--auto-liquidity 5m` or `10m`, the real fee is
   proportionally larger.
