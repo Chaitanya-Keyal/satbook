@@ -6,27 +6,27 @@
 import type { DraftTx } from '../../types';
 
 const FIELDS = [
-	'type',
-	'ts',
-	'seq',
-	'walletId',
-	'fromWalletId',
-	'toWalletId',
-	'amountSats',
-	'feeSats',
-	'fiatCurrency',
-	'fiatAmountMinor',
-	'fxRateToInr',
-	'inrValueMinor',
-	'feeInrValueMinor',
-	'btcUsdRate',
-	'enteredRate',
-	'rateSource',
-	'txid',
-	'refKind',
-	'incomeKind',
-	'counterparty',
-	'notes'
+  'type',
+  'ts',
+  'seq',
+  'walletId',
+  'fromWalletId',
+  'toWalletId',
+  'amountSats',
+  'feeSats',
+  'fiatCurrency',
+  'fiatAmountMinor',
+  'fxRateToInr',
+  'inrValueMinor',
+  'feeInrValueMinor',
+  'btcUsdRate',
+  'enteredRate',
+  'rateSource',
+  'txid',
+  'refKind',
+  'incomeKind',
+  'counterparty',
+  'notes'
 ] as const;
 
 // Every draft field must be plucked here. A field the form posts but this list
@@ -37,12 +37,12 @@ const _everyFieldPlucked: [Unplucked] extends [never] ? true : Unplucked = true;
 void _everyFieldPlucked;
 
 export function draftFromFormData(form: FormData): Record<string, string | null> {
-	const out: Record<string, string | null> = {};
-	for (const f of FIELDS) {
-		const v = form.get(f);
-		out[f] = typeof v === 'string' ? v : null;
-	}
-	return out;
+  const out: Record<string, string | null> = {};
+  for (const f of FIELDS) {
+    const v = form.get(f);
+    out[f] = typeof v === 'string' ? v : null;
+  }
+  return out;
 }
 
 /**
@@ -51,20 +51,20 @@ export function draftFromFormData(form: FormData): Record<string, string | null>
  * Coercion/validation still happens in ledger.ts#createTxPair.
  */
 export function withdrawalFromFormData(form: FormData): Record<string, string | null> {
-	const get = (k: string) => {
-		const v = form.get(k);
-		return typeof v === 'string' ? v : null;
-	};
-	return {
-		type: 'TRANSFER',
-		ts: get('wdTs'),
-		seq: null,
-		fromWalletId: get('walletId'),
-		toWalletId: get('wdToWalletId'),
-		amountSats: get('wdAmountSats'),
-		feeSats: get('wdFeeSats'),
-		feeInrValueMinor: get('wdFeeInrValueMinor'),
-		txid: get('wdTxid'),
-		notes: null
-	};
+  const get = (k: string) => {
+    const v = form.get(k);
+    return typeof v === 'string' ? v : null;
+  };
+  return {
+    type: 'TRANSFER',
+    ts: get('wdTs'),
+    seq: null,
+    fromWalletId: get('walletId'),
+    toWalletId: get('wdToWalletId'),
+    amountSats: get('wdAmountSats'),
+    feeSats: get('wdFeeSats'),
+    feeInrValueMinor: get('wdFeeInrValueMinor'),
+    txid: get('wdTxid'),
+    notes: null
+  };
 }

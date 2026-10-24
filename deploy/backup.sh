@@ -38,21 +38,21 @@ inside="/data/.backup-$$.db"
 
 # VACUUM INTO, then integrity-check the copy before it leaves the container.
 compose exec -T -e OUT="$inside" "$SERVICE" bun -e '
-	const { Database } = require("bun:sqlite");
-	const out = process.env.OUT;
-	new Database(process.env.DATABASE_PATH ?? "/data/btc.db").query("VACUUM INTO ?").run(out);
-	const copy = new Database(out, { readonly: true });
-	const check = Object.values(copy.query("PRAGMA integrity_check").get())[0];
-	if (check !== "ok") {
-		console.error(`integrity_check: ${check}`);
-		process.exit(1);
-	}
-	const { n } = copy.query("SELECT count(*) AS n FROM transactions").get();
-	console.log(n);
+  const { Database } = require("bun:sqlite");
+  const out = process.env.OUT;
+  new Database(process.env.DATABASE_PATH ?? "/data/btc.db").query("VACUUM INTO ?").run(out);
+  const copy = new Database(out, { readonly: true });
+  const check = Object.values(copy.query("PRAGMA integrity_check").get())[0];
+  if (check !== "ok") {
+    console.error(`integrity_check: ${check}`);
+    process.exit(1);
+  }
+  const { n } = copy.query("SELECT count(*) AS n FROM transactions").get();
+  console.log(n);
 ' >"$tmp/rows" || {
-	compose exec -T "$SERVICE" rm -f "$inside" || true
-	log "FAIL: could not take a consistent copy (see above)"
-	exit 1
+  compose exec -T "$SERVICE" rm -f "$inside" || true
+  log "FAIL: could not take a consistent copy (see above)"
+  exit 1
 }
 
 # Stream the copy out (owned by whoever runs this script, even under sudo docker).
@@ -65,9 +65,9 @@ find "$BACKUP_DIR" -maxdepth 1 -name 'btc-*.db' -mtime +"$KEEP_DAYS" -delete
 
 note=""
 if [ -n "${AGE_RECIPIENT:-}" ]; then
-	age -r "$AGE_RECIPIENT" -o "$tmp/btc.db.age" "$tmp/btc.db"
-	install -m 600 "$tmp/btc.db.age" "$BACKUP_DIR/btc-latest.db.age"
-	note="; encrypted copy updated"
+  age -r "$AGE_RECIPIENT" -o "$tmp/btc.db.age" "$tmp/btc.db"
+  install -m 600 "$tmp/btc.db.age" "$BACKUP_DIR/btc-latest.db.age"
+  note="; encrypted copy updated"
 fi
 
 copies=$(find "$BACKUP_DIR" -maxdepth 1 -name 'btc-*.db' | wc -l)
