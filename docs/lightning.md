@@ -17,8 +17,10 @@ without a node.
   deposits still being swapped in.
 - **Receivable:** how much the channel can still take in before phoenixd has to
   buy more inbound liquidity.
-- **Next top-up:** what the next liquidity purchase would cost, as quoted by the
-  node.
+- **Next top-up:** what the next liquidity purchase would cost for the
+  2,000,000-sat block alone, as quoted by the node. The payment that sets it
+  off is bought too, so it adds 1% of itself; the receive card quotes the whole
+  thing for a given amount.
 - **Ledger check:** the satbook wallet that stands for the node, checked against
   the node's balance plus fee credit.
 - **Activity:** every payment in and out. Each one shows the Lightning Address
@@ -27,7 +29,12 @@ without a node.
 - **Receive:** create an invoice (an amount, or any amount, and what it is
   for). It shows as a QR code and flips to _paid_ when it is; the payment then
   waits in the review inbox like any other. Invoices come straight from
-  phoenixd, so LNbits never sees them.
+  phoenixd, so LNbits never sees them. As you type an amount, the card says
+  what receiving it would cost:
+  - nothing, if it fits in what the channel can still take in;
+  - otherwise, the liquidity purchase it sets off (the 2M block plus the
+    payment), its fee and what you'd keep;
+  - or a warning, if the payment is small enough to end up as fee credit.
 - **Your Lightning Address,** with a QR code.
 
 Settings → Lightning lets you choose or create the node's wallet. _Test
@@ -124,8 +131,9 @@ mining fee.
   credit_ (capped at 50,000 sat by default). You receive nothing spendable
   until the credit plus a later payment can cover a purchase.
 - **So fund the node yourself before the address goes public.** Pay it from
-  another wallet you own. First ask the node what a purchase costs right now,
-  for your amount plus the 2M:
+  another wallet you own. Type the amount on `/lightning`'s receive card to see
+  what you'd keep, then make the invoice there. Or ask the node directly what a
+  purchase costs right now, for your amount plus the 2M:
 
   ```sh
   # on the node's host, for a 30 000 sat bootstrap
@@ -133,9 +141,16 @@ mining fee.
   # {"miningFeeSat": 411, "serviceFeeSat": 21300}
   ```
 
-  Then send that total plus a margin (about 10,000 sat). The fee-credit check
-  uses a raised, worst-case feerate, so a payment that only just covers the
-  quote can still land in fee credit.
+  Then send that total plus a margin (about 10,000 sat). The quote is at
+  today's feerate, but phoenixd pays more than that:
+  - **Opening the channel** pays a raised feerate, 1.6–2.5× the quoted mining
+    fee.
+  - **The fee-credit check** goes further. A payment, plus any credit so far,
+    becomes fee credit while it is at most the service fee plus up to 3.8× the
+    quoted mining fee. So a payment that only just covers the quote can still
+    land in fee credit.
+
+  The receive card accounts for both.
 
 - **In the ledger, that bootstrap is a TRANSFER** from the paying wallet to the
   node's wallet. The amount credited is what arrived. The fee is the node's
@@ -205,9 +220,9 @@ except on a development server.
   payment list. The balance shows them; record them by hand.
 - **Fee bumps, channel closes, and a liquidity purchase with no matching
   payment** show up in the review list, but are yours to record by hand.
-- **phoenixd's default top-up size is assumed** for the "next top-up" quote
-  (2M). If you run `--auto-liquidity 5m` or `10m`, the real fee is
-  proportionally larger.
+- **phoenixd's default top-up size is assumed** for the "next top-up" tile and
+  the receive card's quote (2M). If you run `--auto-liquidity 5m` or `10m`, the
+  real fee is proportionally larger.
 
 ## Developing without a node
 
@@ -229,6 +244,9 @@ LNBITS_URL=http://127.0.0.1:5000 LNBITS_INVOICE_KEY=mock-invoice-key \
 LIGHTNING_ADDRESS=you@example.com bun run dev
 ```
 
-`MOCK_CHAIN=testnet3` makes it a test node. `MOCK_SCOPE=full` makes it accept
+`MOCK_NODE=fresh` starts it as a node that has received nothing yet. An invoice
+paid there opens the channel and takes the fee the way phoenixd does, or
+becomes fee credit if it is too small. `MOCK_CHAIN=testnet3` makes it a test
+node. `MOCK_SCOPE=full` makes it accept
 `mock-full`, so you can see the full-access-password warning. phoenixd also runs
 on testnet (`--chain testnet`), with ACINQ's testnet node as its peer.

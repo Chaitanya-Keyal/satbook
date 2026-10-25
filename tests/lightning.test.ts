@@ -1,5 +1,5 @@
 // Lightning module suite: config, the phoenixd/LNbits parsers and error
-// mapping, zap verification, and sync against the mock node in
+// mapping, zap verification, receive quotes, and sync against the mock node in
 // scripts/mock-phoenixd.ts (called in-process through a fetch stub — no
 // network, no ports). DATABASE_PATH must be set before the db module loads,
 // so server modules are imported dynamically.
@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToHex, hexToBytes } from '@noble/curves/utils.js';
+import { purchaseQuote } from '../src/lib/utils/lightning';
 
 process.env.DATABASE_PATH = ':memory:';
 delete process.env.ADMIN_PASSWORD;
@@ -349,6 +350,125 @@ describe('invoices', () => {
     expect(parseCreatedInvoice({ paymentHash: 'ab', serialized: 'lnbc1xyz' })).toMatchObject({
       amountSat: null
     });
+  });
+});
+
+describe('receive quotes', () => {
+  const fresh = { inboundSat: 0, feeCreditSat: 0, hasChannel: false };
+  // phoenixd's quote for 2,000,000 + 40,000 on a node with no channel yet.
+  const bootstrapFee = { miningFeeSat: 500, serviceFeeSat: 21_400 };
+
+  test('a bootstrap buys the block plus the payment, at a raised feerate', () => {
+    expect(purchaseQuote(40_000, fresh, 2_000_000, bootstrapFee)).toEqual({
+      kind: 'purchase',
+      inboundSat: 0,
+      purchaseSat: 2_040_000,
+      opensChannel: true,
+      quotedFeeSat: 21_900,
+      serviceSat: 21_400,
+      // 1.6× and 2.5× the quoted 500: opening a channel always raises it
+      miningSat: [800, 1_250],
+      feeCreditSat: 0,
+      keepSat: [17_350, 17_800]
+    });
+  });
+
+  test('a payment that cannot cover a worst-case fee may all become fee credit', () => {
+    // 21,050 service + 3.8 × 500 mining
+    const fee = { miningFeeSat: 500, serviceFeeSat: 21_050 };
+    expect(purchaseQuote(5_000, fresh, 2_000_000, fee)).toEqual({
+      kind: 'fee-credit',
+      inboundSat: 0,
+      thresholdSat: 22_950
+    });
+    expect(purchaseQuote(22_950, fresh, 2_000_000, fee).kind).toBe('fee-credit');
+    expect(purchaseQuote(22_951, fresh, 2_000_000, fee).kind).toBe('purchase');
+  });
+
+  test('fee credit counts toward the threshold and pays the fee first', () => {
+    const fee = { miningFeeSat: 500, serviceFeeSat: 21_050 };
+    const q = purchaseQuote(5_000, { ...fresh, feeCreditSat: 20_000 }, 2_000_000, fee);
+    expect(q.kind === 'purchase' && q.keepSat).toEqual([5_000 - 2_300, 5_000 - 1_850]);
+    const covered = purchaseQuote(5_000, { ...fresh, feeCreditSat: 30_000 }, 2_000_000, fee);
+    expect(covered.kind === 'purchase' && covered.keepSat).toEqual([5_000, 5_000]);
+  });
+
+  test('a splice has no creation fee in its quote, but the fee-credit test still counts one', () => {
+    const node = { inboundSat: 1_500, feeCreditSat: 0, hasChannel: true };
+    const fee = { miningFeeSat: 300, serviceFeeSat: 20_300 };
+    // 20,300 + 1,000 + 3.8 × 300: above phoenixd's own quote of 20,600
+    expect(purchaseQuote(22_000, node, 2_000_000, fee)).toMatchObject({
+      kind: 'fee-credit',
+      thresholdSat: 22_440
+    });
+    expect(purchaseQuote(30_000, node, 2_000_000, fee)).toMatchObject({
+      kind: 'purchase',
+      opensChannel: false,
+      miningSat: [300, 1_140],
+      keepSat: [8_560, 9_400]
+    });
+  });
+
+  test('the mock node settles a bootstrap and a too-small payment the way the quote says', async () => {
+    const call = (
+      s: ReturnType<typeof mock.freshScenario>,
+      method: string,
+      path: string,
+      body?: string
+    ) =>
+      mock
+        .phoenixdHandler(s, 'limited', { paidAfterMs: 0 })(
+          new Request(`http://phoenixd.test${path}`, {
+            method,
+            body,
+            headers: {
+              authorization: `Basic ${btoa(`:${mock.MOCK_PASSWORD.limited}`)}`,
+              ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {})
+            }
+          })
+        )
+        .then((r) => r.json() as Promise<Record<string, any>>);
+    const receive = async (s: ReturnType<typeof mock.freshScenario>, amountSat: number) => {
+      const made = await call(s, 'POST', '/createinvoice', `amountSat=${amountSat}&description=x`);
+      return call(s, 'GET', `/payments/incoming/${made.paymentHash}`);
+    };
+
+    const node = mock.freshScenario();
+    const fee = await call(node, 'GET', '/estimateliquidityfees?amountSat=2040000');
+    expect(fee).toEqual({ miningFeeSat: mock.MOCK_MINING_FEE_SAT, serviceFeeSat: 21_400 });
+    const quote = purchaseQuote(
+      40_000,
+      { inboundSat: 0, feeCreditSat: 0, hasChannel: false },
+      2_000_000,
+      {
+        miningFeeSat: fee.miningFeeSat,
+        serviceFeeSat: fee.serviceFeeSat
+      }
+    );
+    const paid = await receive(node, 40_000);
+    expect(paid.isPaid).toBe(true);
+    expect(quote.kind === 'purchase' && quote.keepSat[0]).toBe(paid.receivedSat);
+    expect(paid.fees).toBe((40_000 - paid.receivedSat) * 1000);
+    expect(node.outgoing).toMatchObject([
+      { subType: 'auto_liquidity', sent: 40_000 - paid.receivedSat }
+    ]);
+    const info = await call(node, 'GET', '/getinfo');
+    expect(info.channels).toMatchObject([
+      { state: 'Normal', capacitySat: 2_040_000, balanceSat: paid.receivedSat }
+    ]);
+    // Now it fits, and the next quote has no creation fee.
+    expect((await receive(node, 5_000)).receivedSat).toBe(5_000);
+    expect(
+      (await call(node, 'GET', '/estimateliquidityfees?amountSat=2000000')).serviceFeeSat
+    ).toBe(20_000);
+
+    const tiny = mock.freshScenario();
+    expect((await receive(tiny, 5_000)).receivedSat).toBe(5_000);
+    expect(await call(tiny, 'GET', '/getbalance')).toMatchObject({
+      balanceSat: 0,
+      feeCreditSat: 5_000
+    });
+    expect((await call(tiny, 'GET', '/getinfo')).channels).toEqual([]);
   });
 });
 

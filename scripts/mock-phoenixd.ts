@@ -12,7 +12,8 @@
 // Environment: MOCK_PHOENIXD_PORT (9740), MOCK_LNBITS_PORT (5000),
 // MOCK_CHAIN (mainnet), MOCK_SCOPE (limited | full: the password satbook is
 // pretending to hold), MOCK_INVOICE_PAID_AFTER (8: seconds until an invoice
-// made through the mock pays itself).
+// made through the mock pays itself), MOCK_NODE (history | fresh: a node that
+// has received nothing yet, as before the bootstrap).
 
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToHex, hexToBytes } from '@noble/curves/utils.js';
@@ -28,6 +29,9 @@ const uuid = (label: string) => {
 export const MOCK_PASSWORD = { limited: 'mock-limited', full: 'mock-full' } as const;
 export const MOCK_INVOICE_KEY = 'mock-invoice-key';
 export const MOCK_ADDRESS = 'you@example.com';
+/** The mock's mining fee for a liquidity purchase, at the "current" feerate. */
+export const MOCK_MINING_FEE_SAT = 411;
+const AUTO_LIQUIDITY_SAT = 2_000_000;
 const RECIPIENT = hash('recipient pubkey'); // stands in for the address owner's nostr key
 
 /** A zap request (NIP-57, kind 9734) signed by a throwaway key, or forged. */
@@ -225,6 +229,83 @@ export function scenario(nowSec: number, chain = 'mainnet'): Scenario {
   };
 }
 
+/** A node that has received nothing yet: no channel, no balance, no history. */
+export function freshScenario(chain = 'mainnet'): Scenario {
+  const s = scenario(0, chain);
+  return {
+    ...s,
+    info: { ...s.info, nodeId: `02${hash('fresh node id')}`, channels: [] },
+    balance: { ...s.balance, balanceSat: 0 },
+    incoming: [],
+    outgoing: [],
+    lnbits: []
+  };
+}
+
+/**
+ * Pays an invoice the way phoenixd would: into the channel when it fits,
+ * otherwise through a liquidity purchase of the block plus the payment (its
+ * fee taken out of the payment, at the raised feerate phoenixd pays), or into
+ * fee credit when the payment is too small to cover that.
+ */
+function settle(s: Scenario, r: Record<string, unknown>) {
+  const amount = (r.requestedSat as number | undefined) ?? 1_000;
+  const balance = s.balance as { balanceSat: number; feeCreditSat: number };
+  const channels = s.info.channels as Record<string, unknown>[];
+  const channel = channels.find((c) => c.state === 'Normal') as
+    { balanceSat: number; inboundLiquiditySat: number; capacitySat: number } | undefined;
+  r.isPaid = true;
+  r.completedAt = Date.now();
+  r.receivedSat = amount;
+  s.incoming.push(r);
+  if (channel && amount <= channel.inboundLiquiditySat) {
+    channel.balanceSat += amount;
+    channel.inboundLiquiditySat -= amount;
+    balance.balanceSat += amount;
+    return;
+  }
+  const opens = !channel;
+  const service = Math.round((AUTO_LIQUIDITY_SAT + amount) / 100) + (opens ? 1_000 : 0);
+  const threshold = service + (opens ? 0 : 1_000) + Math.ceil(MOCK_MINING_FEE_SAT * 3.8);
+  if (amount + balance.feeCreditSat <= threshold) {
+    balance.feeCreditSat += amount;
+    return;
+  }
+  const total = service + Math.ceil(MOCK_MINING_FEE_SAT * (opens ? 2.5 : 1));
+  const fee = Math.max(0, total - balance.feeCreditSat);
+  balance.feeCreditSat = Math.max(0, balance.feeCreditSat - total);
+  r.receivedSat = amount - fee;
+  r.fees = fee * 1000;
+  const at = r.completedAt as number;
+  s.outgoing.push({
+    type: 'outgoing_payment',
+    subType: 'auto_liquidity',
+    paymentId: uuid(`${String(r.paymentHash)} purchase`),
+    txId: hash(`${String(r.paymentHash)} funding tx`),
+    isPaid: true,
+    sent: fee,
+    fees: fee * 1000,
+    completedAt: at + 2_000,
+    createdAt: at
+  });
+  const kept = amount - fee;
+  if (channel) {
+    channel.capacitySat += AUTO_LIQUIDITY_SAT + amount;
+    channel.balanceSat += kept;
+    channel.inboundLiquiditySat += AUTO_LIQUIDITY_SAT + amount - kept;
+  } else {
+    channels.push({
+      state: 'Normal',
+      channelId: hash(`${String(r.paymentHash)} channel`),
+      balanceSat: kept,
+      inboundLiquiditySat: AUTO_LIQUIDITY_SAT + amount - kept,
+      capacitySat: AUTO_LIQUIDITY_SAT + amount,
+      fundingTxId: hash(`${String(r.paymentHash)} funding tx`)
+    });
+  }
+  balance.balanceSat += kept;
+}
+
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body, null, 4), {
     status,
@@ -260,8 +341,13 @@ export function phoenixdHandler(
       case 'GET /getbalance':
         return json(s.balance);
       case 'GET /estimateliquidityfees': {
+        // 1%, plus the channel creation fee while there is no channel yet.
         const amount = Number(q.get('amountSat') ?? 0);
-        return json({ miningFeeSat: 411, serviceFeeSat: Math.round(amount / 100) + 1_000 });
+        const opens = (s.info.channels as unknown[]).length === 0;
+        return json({
+          miningFeeSat: MOCK_MINING_FEE_SAT,
+          serviceFeeSat: Math.round(amount / 100) + (opens ? 1_000 : 0)
+        });
       }
       case 'GET /payments/incoming': {
         const from = Number(q.get('from') ?? 0);
@@ -311,12 +397,7 @@ export function phoenixdHandler(
           const inv = s.invoices.get(m[1]);
           if (inv) {
             const r = inv.record;
-            if (!r.isPaid && Date.now() - inv.createdAt >= paidAfterMs) {
-              r.isPaid = true;
-              r.receivedSat = (r.requestedSat as number | undefined) ?? 1_000;
-              r.completedAt = Date.now();
-              s.incoming.push(r);
-            }
+            if (!r.isPaid && Date.now() - inv.createdAt >= paidAfterMs) settle(s, r);
             return json(r);
           }
           const known = s.incoming.find((p) => p.paymentHash === m[1]);
@@ -349,7 +430,11 @@ export function lnbitsHandler(s: Scenario) {
 }
 
 if (import.meta.main) {
-  const s = scenario(Math.floor(Date.now() / 1000), process.env.MOCK_CHAIN ?? 'mainnet');
+  const chain = process.env.MOCK_CHAIN ?? 'mainnet';
+  const s =
+    process.env.MOCK_NODE === 'fresh'
+      ? freshScenario(chain)
+      : scenario(Math.floor(Date.now() / 1000), chain);
   const scope = process.env.MOCK_SCOPE === 'full' ? 'full' : 'limited';
   const phoenixdPort = Number(process.env.MOCK_PHOENIXD_PORT ?? 9740);
   const lnbitsPort = Number(process.env.MOCK_LNBITS_PORT ?? 5000);

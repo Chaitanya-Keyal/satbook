@@ -9,7 +9,7 @@
   import Tile from '$lib/components/Tile.svelte';
   import { unit } from '$lib/stores/unit.svelte';
   import { formatAmount, signedAmount } from '$lib/utils/display';
-  import { paymentLabel, pct, shortNpub } from '$lib/utils/lightning';
+  import { paymentLabel, pct, type ReceiveQuote, shortNpub } from '$lib/utils/lightning';
   import { formatInr, formatSats, mulDivRound, SATS_PER_BTC } from '$lib/utils/money';
   import {
     formatIstDateShort,
@@ -74,6 +74,45 @@
     }, 3000);
     return () => clearInterval(timer);
   });
+
+  // --- what receiving the amount being typed would cost -----------------------
+
+  type Quote = { amountSat: number } & ({ quote: ReceiveQuote } | { error: string });
+  let amountText = $state('');
+  let quote = $state<Quote | null>(null);
+
+  $effect(() => {
+    const raw = amountText.replace(/[\s,]/g, '');
+    const amountSat = /^\d+$/.test(raw) ? Number(raw) : 0;
+    quote = null;
+    if (!(amountSat > 0 && amountSat <= 100_000_000)) return;
+    const ctrl = new AbortController();
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/lightning/quote?amountSat=${amountSat}`, {
+          headers: { accept: 'application/json' },
+          signal: ctrl.signal
+        });
+        const body = (await res.json()) as {
+          quote?: ReceiveQuote;
+          error?: string;
+          message?: string;
+        };
+        quote = body.quote
+          ? { amountSat, quote: body.quote }
+          : { amountSat, error: body.error ?? body.message ?? `HTTP ${res.status}` };
+      } catch {
+        /* superseded by the next keystroke, or offline for a moment */
+      }
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      ctrl.abort();
+    };
+  });
+
+  const range = (lo: number, hi: number) =>
+    lo === hi ? formatSats(lo) : `${formatSats(lo)}–${formatSats(hi)}`;
 
   async function copyInvoice(text: string) {
     try {
@@ -246,6 +285,64 @@
   {/if}
 </div>
 
+<!-- What receiving an amount costs: nothing if it fits in the inbound capacity;
+     otherwise phoenixd buys the block plus the payment and takes the fee out of it. -->
+{#snippet quoteView(q: Quote)}
+  <div class="text-xs">
+    {#if 'error' in q}
+      <p class="text-muted">No fee quote from the node: {q.error}.</p>
+    {:else if q.quote.kind === 'fits'}
+      <p class="text-muted">
+        Fits in the {formatSats(q.quote.inboundSat)} sats this node can still receive: no fee.
+      </p>
+    {:else if q.quote.kind === 'fee-credit'}
+      <p class="flex gap-1.5 text-loss">
+        <TriangleAlert size={13} class="mt-px shrink-0" aria-hidden="true" />
+        <span>
+          Too small to set off a liquidity purchase. phoenixd can keep all of it as fee credit: not
+          part of the balance, never refunded, only spent on future fees. It buys liquidity once a
+          payment, plus any fee credit, is over about {formatSats(q.quote.thresholdSat)} sats.
+        </span>
+      </p>
+    {:else}
+      {@const p = q.quote}
+      <p class="text-muted">
+        More than the {formatSats(p.inboundSat)} sats this node can still receive, so it sets off a liquidity
+        purchase, paid out of the payment:
+      </p>
+      <dl class="mt-1.5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+        <dt class="text-muted">buys</dt>
+        <dd>
+          <span class="num whitespace-nowrap">{formatSats(p.purchaseSat)}</span> sats of inbound
+          <span class="text-muted">({formatSats(p.purchaseSat - q.amountSat)} + this payment)</span>
+        </dd>
+        <dt class="text-muted">fee</dt>
+        <dd>
+          ≈ <span class="num whitespace-nowrap"
+            >{range(p.serviceSat + p.miningSat[0], p.serviceSat + p.miningSat[1])}</span
+          >
+          sats
+          <span class="text-muted"
+            >· <span class="whitespace-nowrap">{formatSats(p.serviceSat)} service</span> +
+            <span class="whitespace-nowrap">{range(p.miningSat[0], p.miningSat[1])} mining</span
+            ></span
+          >
+        </dd>
+        <dt class="text-muted">you keep</dt>
+        <dd>
+          ≈ <span class="num whitespace-nowrap">{range(p.keepSat[0], p.keepSat[1])}</span> sats
+        </dd>
+      </dl>
+      <p class="mt-1.5 text-[11px] text-muted">
+        phoenixd quotes {formatSats(p.quotedFeeSat)} at today's feerate; {p.opensChannel
+          ? 'opening the channel pays a raised one'
+          : 'the splice may pay a raised one'}.{#if p.feeCreditSat > 0}
+          The {formatSats(p.feeCreditSat)} sats of fee credit pay the fee first.{/if}
+      </p>
+    {/if}
+  </div>
+{/snippet}
+
 {#if !data.configured}
   <div class="mt-3 rounded-md border border-loss/40 bg-surface p-4 text-xs leading-relaxed">
     <p class="flex items-center gap-1.5 text-loss">
@@ -329,7 +426,8 @@
               {#if s.topUpFee}
                 {formatSats(s.topUpFee.serviceFeeSat)} service + {formatSats(
                   s.topUpFee.miningFeeSat
-                )} mining, for {formatSats(data.topUpSat)} sats of inbound
+                )} mining, for the {formatSats(data.topUpSat)}-sat block alone
+                <span class="block">plus 1% of the payment that sets it off</span>
               {:else}
                 no quote from the node
               {/if}
@@ -435,6 +533,9 @@
               <p class="mt-1 num text-[11px] break-all text-muted" title={invoice.serialized}>
                 {invoice.serialized.slice(0, 28)}…{invoice.serialized.slice(-8)}
               </p>
+              {#if invoiceStatus === 'waiting' && quote && quote.amountSat === invoice.amountSat}
+                <div class="mt-3">{@render quoteView(quote)}</div>
+              {/if}
               <p class="mt-3" aria-live="polite">
                 {#if invoiceStatus === 'paid' && invoicePaid}
                   <span class="text-gain">Paid · +{formatSats(invoicePaid.sat)} sats</span>
@@ -468,7 +569,10 @@
                 </button>
                 <button
                   type="button"
-                  onclick={() => (invoice = null)}
+                  onclick={() => {
+                    invoice = null;
+                    amountText = '';
+                  }}
                   class="rounded border border-border px-2 py-0.5 text-[11px] text-muted transition-colors duration-100 hover:text-text"
                 >
                   New invoice
@@ -493,6 +597,7 @@
               Amount, sats
               <input
                 name="amountSat"
+                bind:value={amountText}
                 inputmode="numeric"
                 placeholder="any"
                 class="mt-1 block w-32 rounded-md border border-border bg-bg px-2.5 py-1.5 num text-[13px] transition-colors duration-100 placeholder:text-muted/70 hover:border-muted/60"
@@ -519,6 +624,9 @@
           {#if form && 'invoiceError' in form && form.invoiceError}
             <p role="alert" class="mt-2 text-xs text-loss">{form.invoiceError}</p>
           {/if}
+          <div class="mt-3" aria-live="polite">
+            {#if quote}{@render quoteView(quote)}{/if}
+          </div>
           <p class="mt-2 text-[11px] text-muted">
             A one-hour invoice from this node. Once paid, it shows up in the activity and the review
             inbox like any other payment.
