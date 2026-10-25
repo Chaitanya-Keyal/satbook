@@ -18,7 +18,7 @@ const { lightningConfigState } = await import('../src/lib/server/lightning/confi
 const { parseCreatedInvoice, parseIncoming, parseOutgoing, parseNodeInfo, parseBalance, phoenixd } =
   await import('../src/lib/server/lightning/phoenixd');
 const { parseLnbitsPayment } = await import('../src/lib/server/lightning/lnbits');
-const { eventId, npub, parseZapRequest, verifyZapRequest } =
+const { eventId, npub, parseNostrPubkey, parseZapRequest, verifyZapRequest } =
   await import('../src/lib/server/lightning/zap');
 const { syncLightning, lastSync } = await import('../src/lib/server/lightning/sync');
 const { listPayments, importKeyFor } = await import('../src/lib/server/lightning/node');
@@ -34,7 +34,8 @@ const LN_ENV = [
   'LNBITS_INVOICE_KEY',
   'LNBITS_INVOICE_KEY_FILE',
   'LIGHTNING_PROXY',
-  'LIGHTNING_ADDRESS'
+  'LIGHTNING_ADDRESS',
+  'NOSTR_PUBKEY'
 ];
 const clearEnv = () => LN_ENV.forEach((k) => delete process.env[k]);
 
@@ -196,14 +197,19 @@ describe('LNbits parser', () => {
 describe('zap requests', () => {
   const sk = hexToBytes('11'.repeat(32));
   const pubkey = bytesToHex(schnorr.getPublicKey(sk));
-  const sign = (over: Partial<{ content: string; kind: number; amount: string }> = {}) => {
+  const ME = 'aa'.repeat(32);
+  const PAID_AT = 1_700_000_060;
+  const ctx = { recipient: ME, paidMsat: 21_000, completedAt: PAID_AT };
+  const sign = (
+    over: Partial<{ content: string; kind: number; tags: string[][]; createdAt: number }> = {}
+  ) => {
     const e = {
       pubkey,
-      createdAt: 1_700_000_000,
+      createdAt: over.createdAt ?? 1_700_000_000,
       kind: over.kind ?? 9734,
-      tags: [
-        ['amount', over.amount ?? '21000'],
-        ['p', 'aa'.repeat(32)]
+      tags: over.tags ?? [
+        ['amount', '21000'],
+        ['p', ME]
       ],
       content: over.content ?? 'hi'
     };
@@ -211,16 +217,42 @@ describe('zap requests', () => {
     return { ...e, id, sig: bytesToHex(schnorr.sign(hexToBytes(id), sk)) };
   };
 
-  test('a signed request verifies; its amount must match what was paid', () => {
-    const z = sign();
-    expect(verifyZapRequest(z, 21_000)).toBe(true);
-    expect(verifyZapRequest(z, 22_000)).toBe(false);
+  test('signed, for us, for the amount paid, made just before the payment: verified', () => {
+    expect(verifyZapRequest(sign(), ctx)).toBe(true);
+  });
+
+  test('the amount must be stated and match what was paid', () => {
+    expect(verifyZapRequest(sign(), { ...ctx, paidMsat: 22_000 })).toBe(false);
+    expect(verifyZapRequest(sign({ tags: [['p', ME]] }), ctx)).toBe(false);
+  });
+
+  test('it must be addressed to us, and only to us', () => {
+    const other = 'bb'.repeat(32);
+    const to = (...p: string[]) => sign({ tags: [['amount', '21000'], ...p.map((k) => ['p', k])] });
+    expect(verifyZapRequest(to(other), ctx)).toBe(false);
+    expect(verifyZapRequest(to(ME, other), ctx)).toBe(false);
+    expect(verifyZapRequest(to(), ctx)).toBe(false);
+    // without NOSTR_PUBKEY there is nothing to bind to
+    expect(verifyZapRequest(sign(), { ...ctx, recipient: null })).toBe(false);
+  });
+
+  test('a request made long before the payment, or ahead of it, is a replay', () => {
+    expect(verifyZapRequest(sign({ createdAt: PAID_AT - 3601 }), ctx)).toBe(false);
+    expect(verifyZapRequest(sign({ createdAt: PAID_AT + 601 }), ctx)).toBe(false);
+    expect(verifyZapRequest(sign({ createdAt: PAID_AT + 300 }), ctx)).toBe(true);
   });
 
   test('tampering, a zero signature or the wrong kind all fail', () => {
-    expect(verifyZapRequest({ ...sign(), content: 'changed' }, 21_000)).toBe(false);
-    expect(verifyZapRequest({ ...sign(), sig: '0'.repeat(128) }, 21_000)).toBe(false);
-    expect(verifyZapRequest(sign({ kind: 1 }), 21_000)).toBe(false);
+    expect(verifyZapRequest({ ...sign(), content: 'changed' }, ctx)).toBe(false);
+    expect(verifyZapRequest({ ...sign(), sig: '0'.repeat(128) }, ctx)).toBe(false);
+    expect(verifyZapRequest(sign({ kind: 1 }), ctx)).toBe(false);
+  });
+
+  test('NOSTR_PUBKEY takes an npub or a hex key', () => {
+    expect(parseNostrPubkey(npub(ME))).toBe(ME);
+    expect(parseNostrPubkey(ME.toUpperCase())).toBe(ME);
+    expect(parseNostrPubkey('npub1notakey')).toBeNull();
+    expect(parseNostrPubkey('aa')).toBeNull();
   });
 
   test('parses the stored JSON string, rejects junk', () => {
@@ -268,6 +300,7 @@ function useMockEnv(password: string = mock.MOCK_PASSWORD.limited) {
   process.env.PHOENIXD_PASSWORD = password;
   process.env.LNBITS_URL = 'http://lnbits.test';
   process.env.LNBITS_INVOICE_KEY = mock.MOCK_INVOICE_KEY;
+  process.env.NOSTR_PUBKEY = npub(mock.MOCK_NOSTR_PUBKEY);
 }
 
 describe('phoenixd client', () => {
@@ -531,6 +564,81 @@ describe('sync', () => {
     const cli = rows().find((r) => r.description === 'invoice from the CLI')!;
     expect(cli.comment).toBeNull();
     expect(cli.zapPubkey).toBeNull();
+  });
+
+  test('without NOSTR_PUBKEY a zap names nobody', async () => {
+    delete process.env.NOSTR_PUBKEY;
+    await syncLightning({ force: true });
+    expect(rows().filter((r) => r.zapVerified)).toEqual([]);
+    useMockEnv();
+    await syncLightning({ force: true });
+    expect(rows().filter((r) => r.zapVerified)).toHaveLength(1);
+  });
+
+  test('a zap request lifted from one payment names nobody on another', async () => {
+    // The reviewer's replay: one validly signed request for us, attached to
+    // two payments ten minutes apart. Only the first may name its sender.
+    const sk = hexToBytes('22'.repeat(32));
+    const zapper = bytesToHex(schnorr.getPublicKey(sk));
+    const at = NOW - 3600;
+    const e = {
+      pubkey: zapper,
+      createdAt: at - 30,
+      kind: 9734,
+      tags: [
+        ['amount', '5000000'],
+        ['p', mock.MOCK_NOSTR_PUBKEY]
+      ],
+      content: 'twice?'
+    };
+    const id = eventId(e);
+    const nostr = JSON.stringify({
+      id,
+      pubkey: zapper,
+      created_at: e.createdAt,
+      kind: 9734,
+      tags: e.tags,
+      content: e.content,
+      sig: bytesToHex(schnorr.sign(hexToBytes(id), sk))
+    });
+    for (const [label, when] of [
+      ['replay first', at],
+      ['replay second', at + 600]
+    ] as const) {
+      const hash = bytesToHex(new Bun.CryptoHasher('sha256').update(label).digest());
+      SCENARIO.incoming.push({
+        type: 'incoming_payment',
+        subType: 'lightning',
+        paymentHash: hash,
+        isPaid: true,
+        requestedSat: 5_000,
+        receivedSat: 5_000,
+        fees: 0,
+        createdAt: when * 1000 - 5000,
+        completedAt: when * 1000
+      });
+      SCENARIO.lnbits.push({
+        checking_id: hash,
+        payment_hash: hash,
+        amount: 5_000_000,
+        fee: 0,
+        status: 'success',
+        time: new Date(when * 1000).toISOString(),
+        extra: { tag: 'lnurlp', nostr }
+      });
+    }
+    try {
+      await syncLightning({ force: true, full: true });
+      const twice = rows().filter((r) => r.zapContent === 'twice?');
+      expect(twice).toHaveLength(2);
+      expect(twice.map((r) => r.zapId)).toEqual([id, id]);
+      expect(twice.sort((a, b) => a.completedAt - b.completedAt).map((r) => r.zapVerified)).toEqual(
+        [true, false]
+      );
+    } finally {
+      SCENARIO.incoming.splice(-2, 2);
+      SCENARIO.lnbits.splice(-2, 2);
+    }
   });
 
   test('a sync never resets review state', async () => {

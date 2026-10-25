@@ -138,8 +138,12 @@ export const lightningPayments = sqliteTable(
     lnAddress: text('ln_address'),
     zapPubkey: text('zap_pubkey'),
     zapContent: text('zap_content'),
-    // The zap request's signature checked out. LNbits does not check it, so
-    // an unverified sender is only a claim.
+    // The zap request's event id: one request can name the sender of one
+    // payment only, so a replayed request is caught.
+    zapId: text('zap_id'),
+    // The zap request is signed by its sender and bound to this payment (our
+    // pubkey, the amount paid, recent, not used before). LNbits checks none of
+    // this, so an unverified sender is only a claim.
     zapVerified: integer('zap_verified', { mode: 'boolean' }),
     // 'paired' marks an outgoing auto_liquidity record matched to the incoming
     // payment that already carries its fee.
@@ -151,7 +155,8 @@ export const lightningPayments = sqliteTable(
   },
   (t) => [
     uniqueIndex('ln_node_key_idx').on(t.nodeId, t.key),
-    index('ln_completed_idx').on(t.completedAt)
+    index('ln_completed_idx').on(t.completedAt),
+    index('ln_zap_id_idx').on(t.zapId)
   ]
 );
 

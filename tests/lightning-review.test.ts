@@ -37,6 +37,7 @@ const row = (over: Partial<Row>): Row => ({
   lnAddress: null,
   zapPubkey: null,
   zapContent: null,
+  zapId: null,
   zapVerified: null,
   review: 'pending',
   pairedKey: null,
@@ -203,6 +204,7 @@ beforeAll(async () => {
   process.env.PHOENIXD_PASSWORD = mock.MOCK_PASSWORD.limited;
   process.env.LNBITS_URL = 'http://lnbits.test';
   process.env.LNBITS_INVOICE_KEY = mock.MOCK_INVOICE_KEY;
+  process.env.NOSTR_PUBKEY = mock.MOCK_NOSTR_PUBKEY;
   db.delete(schema.lightningPayments).run();
   db.delete(schema.settings).where(like(schema.settings.key, 'ln_%')).run();
 
@@ -248,7 +250,13 @@ afterAll(() => {
   db.delete(schema.lightningPayments).run();
   db.delete(schema.settings).where(like(schema.settings.key, 'ln_%')).run();
   db.delete(schema.wallets).where(inArray(schema.wallets.id, created.wallets)).run();
-  for (const k of ['PHOENIXD_URL', 'PHOENIXD_PASSWORD', 'LNBITS_URL', 'LNBITS_INVOICE_KEY'])
+  for (const k of [
+    'PHOENIXD_URL',
+    'PHOENIXD_PASSWORD',
+    'LNBITS_URL',
+    'LNBITS_INVOICE_KEY',
+    'NOSTR_PUBKEY'
+  ])
     delete process.env[k];
 });
 

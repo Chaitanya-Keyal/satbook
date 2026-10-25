@@ -163,6 +163,12 @@
             <dt class="text-muted">address</dt>
             <dd class="num break-all">{ln.address}</dd>
           {/if}
+          {#if ln.lnbits}
+            <dt class="text-muted">zaps to</dt>
+            <dd class="num break-all">
+              {ln.zapRecipient ?? 'not set: zap senders stay unverified (set NOSTR_PUBKEY)'}
+            </dd>
+          {/if}
         </dl>
 
         <form

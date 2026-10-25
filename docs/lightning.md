@@ -53,6 +53,7 @@ satbook holds.
 | `LNBITS_INVOICE_KEY` or `_FILE` | with LNbits | the **invoice/read** key of the LNbits wallet behind your Lightning Address, never the admin key                                              |
 | `LIGHTNING_PROXY`               | no          | an HTTP proxy used for these calls only (see [Reaching the node from a tailnet-only satbook](#reaching-the-node-from-a-tailnet-only-satbook)) |
 | `LIGHTNING_ADDRESS`             | no          | `name@domain`, shown with a QR code                                                                                                           |
+| `NOSTR_PUBKEY`                  | for zaps    | your nostr pubkey (`npub…` or hex). A zap's sender is shown as verified only if the zap is addressed to it                                    |
 
 The `_FILE` forms read the secret from a file, such as a Docker secret. Use
 _Test connection_ to confirm satbook holds the limited password. With the full
@@ -185,10 +186,18 @@ mining fee.
   payment that triggered it, net of the fee, and a separate `auto_liquidity`
   record for the same fee. satbook pairs them and shows the purchase on the
   payment, so the fee is never counted twice.
-- **Zaps.** LNbits stores a zap request without checking its signature, so
-  anyone can claim any sender. satbook verifies the nostr event id and its
-  BIP-340 signature. Only then does a zap sender show as verified. Anything else
-  is marked unverified.
+- **Zaps.** LNbits stores a zap request without checking it, so anyone can
+  claim any sender. A valid signature alone proves little either: paid zap
+  requests are public, inside zap receipts, so one can be lifted and attached to
+  another payment. A zap sender shows as verified only when all of these hold:
+  - the event id and BIP-340 signature check out;
+  - the request is addressed to exactly your `NOSTR_PUBKEY`;
+  - it states the amount, and that is what was paid;
+  - it was made within the hour before the payment;
+  - no earlier payment carried the same request.
+
+  Anything else is marked unverified.
+
 - **Ledger status.** A payment counts as recorded when a ledger row was imported
   for it, or when a row you entered by hand carries its payment hash.
 

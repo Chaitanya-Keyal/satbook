@@ -7,7 +7,9 @@
 //
 //   bun scripts/mock-phoenixd.ts
 //   PHOENIXD_URL=http://127.0.0.1:9740 PHOENIXD_PASSWORD=mock-limited \
-//   LNBITS_URL=http://127.0.0.1:5000 LNBITS_INVOICE_KEY=mock-invoice-key bun run dev
+//   LNBITS_URL=http://127.0.0.1:5000 LNBITS_INVOICE_KEY=mock-invoice-key \
+//   NOSTR_PUBKEY=$(bun -e "console.log((await import('./scripts/mock-phoenixd.ts')).MOCK_NOSTR_PUBKEY)") \
+//   bun run dev
 //
 // Environment: MOCK_PHOENIXD_PORT (9740), MOCK_LNBITS_PORT (5000),
 // MOCK_CHAIN (mainnet), MOCK_SCOPE (limited | full: the password satbook is
@@ -32,7 +34,9 @@ export const MOCK_ADDRESS = 'you@example.com';
 /** The mock's mining fee for a liquidity purchase, at the "current" feerate. */
 export const MOCK_MINING_FEE_SAT = 411;
 const AUTO_LIQUIDITY_SAT = 2_000_000;
-const RECIPIENT = hash('recipient pubkey'); // stands in for the address owner's nostr key
+/** Stands in for the address owner's nostr key: zaps are addressed to it. */
+export const MOCK_NOSTR_PUBKEY = hash('recipient pubkey');
+const RECIPIENT = MOCK_NOSTR_PUBKEY;
 
 /** A zap request (NIP-57, kind 9734) signed by a throwaway key, or forged. */
 function zapRequest(amountMsat: number, content: string, createdAt: number, forged = false) {

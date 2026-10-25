@@ -1,7 +1,9 @@
 // NIP-57 zap requests: the signed nostr event (kind 9734) a zapper's client
 // hands the Lightning Address server, which LNbits stores as a JSON string.
-// LNbits does not verify it, so anyone can claim any sender; satbook checks
-// the event id and the BIP-340 signature itself before calling it verified.
+// LNbits does not verify it, so anyone can claim any sender. A valid signature
+// alone proves little: paid zap requests are public (zap receipts embed them),
+// so one can be lifted and attached to any payment. satbook calls a sender
+// verified only when the request is signed by it AND bound to this payment.
 
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { hexToBytes } from '@noble/curves/utils.js';
@@ -61,21 +63,58 @@ export function eventId(e: Omit<ZapRequest, 'id' | 'sig'>): string {
   return new Bun.CryptoHasher('sha256').update(serialized).digest('hex');
 }
 
+/** How long before its payment a zap request may have been made. */
+export const ZAP_MAX_AGE_SEC = 3600;
+/** How far ahead of ours the zapper's clock may run. */
+const CLOCK_SKEW_SEC = 600;
+
+export interface ZapContext {
+  /** Our hex pubkey, which the request must be addressed to. Without it nothing verifies. */
+  recipient: string | null;
+  /** What was paid, in msat. */
+  paidMsat: number;
+  /** When the payment completed, unix seconds. */
+  completedAt: number;
+}
+
 /**
- * A zap request is trusted only if it is a kind-9734 event whose id matches its
- * content and whose signature verifies against the claimed pubkey. When the
- * request names an amount it must match what was actually paid.
+ * Whether a zap request names the sender of this payment: a kind-9734 event,
+ * correctly hashed and signed, addressed to exactly our pubkey, for exactly
+ * the amount paid, and made shortly before the payment. One request naming
+ * two payments is caught by the caller, which can see the other payments.
  */
-export function verifyZapRequest(e: ZapRequest, paidMsat: number | null): boolean {
+export function verifyZapRequest(e: ZapRequest, ctx: ZapContext): boolean {
+  if (!ctx.recipient) return false;
   if (e.kind !== 9734) return false;
   if (!HEX64.test(e.pubkey) || !HEX64.test(e.id) || !HEX128.test(e.sig)) return false;
+  const p = e.tags.filter((t) => t[0] === 'p');
+  if (p.length !== 1 || p[0][1]?.toLowerCase() !== ctx.recipient) return false;
+  const amount = e.tags.filter((t) => t[0] === 'amount');
+  if (amount.length !== 1 || !/^\d+$/.test(amount[0][1] ?? '')) return false;
+  if (Number(amount[0][1]) !== ctx.paidMsat) return false;
+  const age = ctx.completedAt - e.createdAt;
+  if (age > ZAP_MAX_AGE_SEC || age < -CLOCK_SKEW_SEC) return false;
   if (eventId(e) !== e.id) return false;
-  const amount = e.tags.find((t) => t[0] === 'amount')?.[1];
-  if (amount != null && paidMsat != null && Number(amount) !== paidMsat) return false;
   try {
     return schnorr.verify(hexToBytes(e.sig), hexToBytes(e.id), hexToBytes(e.pubkey));
   } catch {
     return false;
+  }
+}
+
+/** An npub or a 64-character hex key → the hex key, else null. */
+export function parseNostrPubkey(raw: string): string | null {
+  const v = raw.trim();
+  if (HEX64.test(v.toLowerCase())) return v.toLowerCase();
+  if (!/^npub1/i.test(v)) return null;
+  try {
+    const { prefix, words } = bech32.decode(v.toLowerCase() as `${string}1${string}`);
+    if (prefix !== 'npub') return null;
+    const bytes = bech32.fromWords(words);
+    if (bytes.length !== 32) return null;
+    return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return null;
   }
 }
 

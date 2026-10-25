@@ -114,7 +114,7 @@ async function run(full: boolean): Promise<SyncStatus> {
   let warning: string | undefined;
   const lb = lnbitsFor(cfg);
   if (lb) {
-    const err = await enrichFromLnbits(lb, nodeId, full ? 0 : from);
+    const err = await enrichFromLnbits(lb, nodeId, full ? 0 : from, cfg.zapRecipient);
     if (err) warning = `LNbits ${err}`;
   }
   return record({ at, ok: true, nodeId, chain, added, warning });
@@ -234,7 +234,8 @@ export function pairLiquidityPurchases(nodeId: string): void {
 async function enrichFromLnbits(
   lb: NonNullable<ReturnType<typeof lnbitsFor>>,
   nodeId: string,
-  fromSec: number
+  fromSec: number,
+  zapRecipient: string | null
 ): Promise<string | null> {
   const byHash = new Map<string, LnbitsPayment>();
   for (let page = 0; page < MAX_PAGES; page++) {
@@ -248,14 +249,24 @@ async function enrichFromLnbits(
 
   const t = schema.lightningPayments;
   const rows = db
-    .select({ id: t.id, paymentHash: t.paymentHash })
+    .select({ id: t.id, paymentHash: t.paymentHash, completedAt: t.completedAt, zapId: t.zapId })
     .from(t)
     .where(and(eq(t.nodeId, nodeId), eq(t.direction, 'in')))
     .all();
+  const updates = rows.flatMap((row) => {
+    const p = row.paymentHash ? byHash.get(row.paymentHash) : undefined;
+    return p ? [{ row, p, zapId: p.zap && isHexKey(p.zap.id) ? p.zap.id : null }] : [];
+  });
+  // A zap request names the sender of one payment only: the first to carry it.
+  const zapIds = new Map(rows.map((r) => [r.id, r.zapId]));
+  for (const u of updates) zapIds.set(u.row.id, u.zapId);
+  const firstWith = new Map<string, number>();
+  for (const r of [...rows].sort((a, b) => a.completedAt - b.completedAt || a.id - b.id)) {
+    const z = zapIds.get(r.id);
+    if (z && !firstWith.has(z)) firstWith.set(z, r.id);
+  }
   db.transaction((tx) => {
-    for (const row of rows) {
-      const p = row.paymentHash ? byHash.get(row.paymentHash) : undefined;
-      if (!p) continue;
+    for (const { row, p, zapId } of updates) {
       tx.update(t)
         .set({
           memo: p.memo,
@@ -263,7 +274,16 @@ async function enrichFromLnbits(
           lnAddress: p.lnAddress,
           zapPubkey: p.zap && isHexKey(p.zap.pubkey) ? p.zap.pubkey : null,
           zapContent: p.zap ? p.zap.content.slice(0, 500) : null,
-          zapVerified: p.zap ? verifyZapRequest(p.zap, p.amountMsat) : null
+          zapId,
+          zapVerified: p.zap
+            ? zapId != null &&
+              firstWith.get(zapId) === row.id &&
+              verifyZapRequest(p.zap, {
+                recipient: zapRecipient,
+                paidMsat: p.amountMsat,
+                completedAt: row.completedAt
+              })
+            : null
         })
         .where(eq(t.id, row.id))
         .run();

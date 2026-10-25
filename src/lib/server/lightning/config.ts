@@ -3,6 +3,7 @@
 // set. Secrets are read here, per call, and never leave the server.
 
 import { readFileSync } from 'node:fs';
+import { parseNostrPubkey } from './zap';
 
 export interface LightningConfig {
   /** phoenixd's HTTP API, no trailing slash. */
@@ -16,6 +17,8 @@ export interface LightningConfig {
   proxy: string | null;
   /** Shown, with a QR code, on the dashboard. */
   lightningAddress: string | null;
+  /** Your nostr pubkey (hex): a zap's sender is verified only if the zap is addressed to it. */
+  zapRecipient: string | null;
 }
 
 export type ConfigState =
@@ -76,6 +79,11 @@ export function lightningConfigState(): ConfigState {
   if (address && !/^[a-z0-9._+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(address))
     return { state: 'invalid', problem: 'LIGHTNING_ADDRESS is not of the form name@domain' };
 
+  const nostrRaw = process.env.NOSTR_PUBKEY?.trim();
+  const zapRecipient = nostrRaw ? parseNostrPubkey(nostrRaw) : null;
+  if (nostrRaw && !zapRecipient)
+    return { state: 'invalid', problem: 'NOSTR_PUBKEY is not an npub or a 64-character hex key' };
+
   return {
     state: 'on',
     config: {
@@ -84,7 +92,8 @@ export function lightningConfigState(): ConfigState {
       lnbitsUrl,
       lnbitsInvoiceKey,
       proxy,
-      lightningAddress: address
+      lightningAddress: address,
+      zapRecipient
     }
   };
 }

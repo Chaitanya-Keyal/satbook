@@ -6,6 +6,7 @@ import { getLedger } from '$lib/server/ledger';
 import { displayOrigin, lightningConfigState } from '$lib/server/lightning/config';
 import { describeError } from '$lib/server/lightning/http';
 import { lnbitsFor } from '$lib/server/lightning/lnbits';
+import { npub } from '$lib/server/lightning/zap';
 import { lightningWallet, setLightningWallet } from '$lib/server/lightning/node';
 import { phoenixd } from '$lib/server/lightning/phoenixd';
 import { lastSync } from '$lib/server/lightning/sync';
@@ -36,6 +37,7 @@ function lightningSettings(wallets: (typeof schema.wallets.$inferSelect)[]) {
     lnbits: cfg.lnbitsUrl ? displayOrigin(cfg.lnbitsUrl) : null,
     proxy: cfg.proxy ? displayOrigin(cfg.proxy) : null,
     address: cfg.lightningAddress,
+    zapRecipient: cfg.zapRecipient ? npub(cfg.zapRecipient) : null,
     walletId: lightningWallet()?.id ?? null,
     wallets: wallets
       .filter((w) => w.archivedAt == null && w.layer === 'lightning')
