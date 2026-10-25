@@ -1,5 +1,5 @@
 import { error, json } from '@sveltejs/kit';
-import { lightningConfigState } from '$lib/server/lightning/config';
+import { lightningState } from '$lib/server/lightning/credentials';
 import { describeError } from '$lib/server/lightning/http';
 import { nodeStatus, TOP_UP_SAT } from '$lib/server/lightning/node';
 import { phoenixd } from '$lib/server/lightning/phoenixd';
@@ -12,7 +12,7 @@ import type { RequestHandler } from './$types';
  * payment.
  */
 export const GET: RequestHandler = async ({ url }) => {
-  const st = lightningConfigState();
+  const st = await lightningState();
   if (st.state !== 'on') error(404, 'Lightning is not configured');
   const raw = (url.searchParams.get('amountSat') ?? '').replace(/[\s,]/g, '');
   const amountSat = /^\d+$/.test(raw) ? Number(raw) : NaN;

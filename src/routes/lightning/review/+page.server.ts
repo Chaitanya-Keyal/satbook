@@ -2,7 +2,7 @@ import { dev } from '$app/environment';
 import { error, fail, redirect } from '@sveltejs/kit';
 import { db, schema } from '$lib/server/db';
 import type { Decision } from '$lib/server/lightning/classify';
-import { lightningConfigState } from '$lib/server/lightning/config';
+import { lightningState } from '$lib/server/lightning/credentials';
 import { lightningWallet } from '$lib/server/lightning/node';
 import {
   currentNode,
@@ -33,7 +33,7 @@ function zapView(r: {
 }
 
 export const load: PageServerLoad = async () => {
-  const st = lightningConfigState();
+  const st = await lightningState();
   if (st.state === 'off') error(404, 'Lightning is not configured');
   if (st.state === 'invalid') redirect(303, '/lightning');
   await syncLightning();

@@ -57,9 +57,11 @@ satbook holds.
 | `LIGHTNING_ADDRESS`             | no          | `name@domain`, shown with a QR code                                                                                                           |
 | `NOSTR_PUBKEY`                  | for zaps    | your nostr pubkey (`npub…` or hex). A zap's sender is shown as verified only if the zap is addressed to it                                    |
 
-The `_FILE` forms read the secret from a file, such as a Docker secret. Use
-_Test connection_ to confirm satbook holds the limited password. With the full
-password it would still never pay, but a leak would be far worse.
+The `_FILE` forms read the secret from a file, such as a Docker secret.
+satbook checks the kind itself: it asks phoenixd and LNbits which credentials
+it holds, and refuses to run with phoenixd's full-access password or an LNbits
+admin key. With either it would still never pay, but a leak would let someone
+else spend. _Test connection_ shows the result.
 
 ## The reference setup
 

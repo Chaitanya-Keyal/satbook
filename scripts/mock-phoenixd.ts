@@ -30,6 +30,8 @@ const uuid = (label: string) => {
 
 export const MOCK_PASSWORD = { limited: 'mock-limited', full: 'mock-full' } as const;
 export const MOCK_INVOICE_KEY = 'mock-invoice-key';
+/** An admin key, which satbook must refuse: LNbits shows it the wallet id. */
+export const MOCK_ADMIN_KEY = 'mock-admin-key';
 export const MOCK_ADDRESS = 'you@example.com';
 /** The mock's mining fee for a liquidity purchase, at the "current" feerate. */
 export const MOCK_MINING_FEE_SAT = 411;
@@ -419,10 +421,16 @@ export function phoenixdHandler(
 /** LNbits' API over `s`, for an invoice key. */
 export function lnbitsHandler(s: Scenario) {
   return async (req: Request): Promise<Response> => {
-    if (req.headers.get('x-api-key') !== MOCK_INVOICE_KEY)
+    const key = req.headers.get('x-api-key');
+    if (key !== MOCK_INVOICE_KEY && key !== MOCK_ADMIN_KEY)
       return json({ detail: 'Invalid key' }, 401);
     const url = new URL(req.url);
-    if (url.pathname === '/api/v1/wallet') return json({ name: 'donations', balance: 0 });
+    if (url.pathname === '/api/v1/wallet')
+      return json({
+        name: 'donations',
+        balance: 0,
+        ...(key === MOCK_ADMIN_KEY ? { id: 'mockwallet' } : {})
+      });
     if (url.pathname === '/api/v1/payments/paginated') {
       const q = url.searchParams;
       const offset = Number(q.get('offset') ?? 0);

@@ -63,6 +63,19 @@ export function lnbits(cfg: LightningConfig & { lnbitsUrl: string; lnbitsInvoice
         { headers, proxy: cfg.proxy },
         parsePage
       ),
+    /**
+     * Which key satbook holds. LNbits returns the wallet id only to an admin
+     * key (lnbits/core/views/wallet_api.py), so this needs no write to tell.
+     */
+    async keyType(): Promise<'invoice' | 'admin' | 'unknown'> {
+      const r = await requestJson(
+        `${cfg.lnbitsUrl}/api/v1/wallet`,
+        { headers, proxy: cfg.proxy },
+        (j) => (isObj(j) ? j : null)
+      );
+      if (!r.ok) return 'unknown';
+      return 'id' in r.data ? 'admin' : 'invoice';
+    },
     getWallet: (): Promise<Fetched<{ name: string; balanceMsat: number }>> =>
       requestJson(`${cfg.lnbitsUrl}/api/v1/wallet`, { headers, proxy: cfg.proxy }, (j) => {
         if (!isObj(j)) return null;

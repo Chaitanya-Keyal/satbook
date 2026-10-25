@@ -9,6 +9,7 @@ import {
 import { db, schema } from '$lib/server/db';
 import { getLedger } from '$lib/server/ledger';
 import { displayOrigin, lightningConfigState } from '$lib/server/lightning/config';
+import { lightningState } from '$lib/server/lightning/credentials';
 import { describeError } from '$lib/server/lightning/http';
 import { lnbitsFor } from '$lib/server/lightning/lnbits';
 import { npub } from '$lib/server/lightning/zap';
@@ -20,19 +21,19 @@ import type { Actions, PageServerLoad } from './$types';
 
 const MIN_PASSWORD_LEN = 8;
 
-export const load: PageServerLoad = () => {
+export const load: PageServerLoad = async () => {
   const wallets = db.select().from(schema.wallets).all();
   return {
     unit: getUnit(),
     txCount: getLedger().length,
     walletCount: wallets.filter((w) => w.archivedAt == null).length,
     dbPath: process.env.DATABASE_PATH ?? 'data/btc.db',
-    lightning: lightningSettings(wallets)
+    lightning: await lightningSettings(wallets)
   };
 };
 
-function lightningSettings(wallets: (typeof schema.wallets.$inferSelect)[]) {
-  const st = lightningConfigState();
+async function lightningSettings(wallets: (typeof schema.wallets.$inferSelect)[]) {
+  const st = await lightningState();
   if (st.state === 'off') return null;
   if (st.state === 'invalid') return { configured: false as const, problem: st.problem };
   const cfg = st.config;

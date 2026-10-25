@@ -15,6 +15,7 @@ process.env.DATABASE_PATH = ':memory:';
 delete process.env.ADMIN_PASSWORD;
 
 const { lightningConfigState } = await import('../src/lib/server/lightning/config');
+const { lightningState } = await import('../src/lib/server/lightning/credentials');
 const { parseCreatedInvoice, parseIncoming, parseOutgoing, parseNodeInfo, parseBalance, phoenixd } =
   await import('../src/lib/server/lightning/phoenixd');
 const { parseLnbitsPayment } = await import('../src/lib/server/lightning/lnbits');
@@ -330,6 +331,42 @@ describe('phoenixd client', () => {
     expect(await client().passwordScope()).toBe('limited');
     scope = 'full';
     expect(await client(mock.MOCK_PASSWORD.full).passwordScope()).toBe('full');
+  });
+});
+
+describe('credentials that could spend', () => {
+  beforeEach(() => {
+    routeFetch();
+    phoenixdDown = false;
+    scope = 'limited';
+  });
+
+  test('the limited password and an invoice key run', async () => {
+    useMockEnv();
+    expect((await lightningState()).state).toBe('on');
+  });
+
+  test('a full-access password is refused, and the sync with it', async () => {
+    scope = 'full';
+    useMockEnv(mock.MOCK_PASSWORD.full);
+    const st = await lightningState();
+    expect(st.state === 'invalid' && st.problem).toMatch(/full-access password/);
+    const s = await syncLightning({ force: true });
+    expect(s.ok === false && s.error).toMatch(/full-access password/);
+  });
+
+  test('an LNbits admin key is refused', async () => {
+    useMockEnv();
+    process.env.LNBITS_INVOICE_KEY = mock.MOCK_ADMIN_KEY;
+    const st = await lightningState();
+    expect(st.state === 'invalid' && st.problem).toMatch(/admin key/);
+  });
+
+  test('a node that cannot answer does not lock satbook out', async () => {
+    useMockEnv();
+    process.env.PHOENIXD_PASSWORD = 'not-checked-yet';
+    phoenixdDown = true;
+    expect((await lightningState()).state).toBe('on');
   });
 });
 

@@ -1,12 +1,12 @@
 import { error, json } from '@sveltejs/kit';
-import { lightningConfigState } from '$lib/server/lightning/config';
+import { lightningState } from '$lib/server/lightning/credentials';
 import { phoenixd } from '$lib/server/lightning/phoenixd';
 import { syncLightning } from '$lib/server/lightning/sync';
 import type { RequestHandler } from './$types';
 
 /** Has the invoice been paid? The dashboard polls this while it shows the QR. */
 export const GET: RequestHandler = async ({ params }) => {
-  const st = lightningConfigState();
+  const st = await lightningState();
   if (st.state !== 'on') error(404, 'Lightning is not configured');
   if (!/^[0-9a-f]{64}$/.test(params.hash)) error(400, 'not a payment hash');
   const res = await phoenixd(st.config).getIncoming(params.hash);

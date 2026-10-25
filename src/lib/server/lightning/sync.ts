@@ -8,7 +8,7 @@
 import { and, eq } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { getSetting, setSetting } from '../settings';
-import { lightningConfig } from './config';
+import { lightningState } from './credentials';
 import { describeError } from './http';
 import { lnbitsFor, type LnbitsPayment } from './lnbits';
 import { type IncomingPayment, type OutgoingPayment, phoenixd } from './phoenixd';
@@ -72,8 +72,10 @@ export function syncLightning(opts: { force?: boolean; full?: boolean } = {}): P
 
 async function run(full: boolean): Promise<SyncStatus> {
   const at = nowSec();
-  const cfg = lightningConfig();
-  if (!cfg) return { at, ok: false, error: 'Lightning is not configured' };
+  const st = await lightningState();
+  if (st.state === 'off') return { at, ok: false, error: 'Lightning is not configured' };
+  if (st.state === 'invalid') return record({ at, ok: false, error: st.problem });
+  const cfg = st.config;
   const node = phoenixd(cfg);
 
   const info = await node.getInfo();

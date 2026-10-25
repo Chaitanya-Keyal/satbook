@@ -1,6 +1,6 @@
 import { error, fail } from '@sveltejs/kit';
 import { getPortfolio } from '$lib/server/ledger';
-import { lightningConfigState } from '$lib/server/lightning/config';
+import { lightningState } from '$lib/server/lightning/credentials';
 import {
   fractionalPayments,
   lightningWallet,
@@ -17,7 +17,7 @@ import { renderSVG } from 'uqr';
 import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
-  const st = lightningConfigState();
+  const st = await lightningState();
   if (st.state === 'off') error(404, 'Lightning is not configured');
   if (st.state === 'invalid') return { configured: false as const, problem: st.problem };
   const cfg = st.config;
@@ -78,7 +78,7 @@ const INVOICE_EXPIRY_SEC = 3600;
 export const actions: Actions = {
   /** A BOLT11 invoice from the node: a QR to show, then the page polls for payment. */
   invoice: async ({ request }) => {
-    const st = lightningConfigState();
+    const st = await lightningState();
     if (st.state !== 'on') return fail(400, { invoiceError: 'Lightning is not configured' });
     const form = await request.formData();
     const rawAmount = String(form.get('amountSat') ?? '').replace(/[\s,]/g, '');
@@ -108,8 +108,11 @@ export const actions: Actions = {
   },
 
   sync: async ({ request }) => {
-    if (lightningConfigState().state !== 'on')
-      return fail(400, { syncError: 'Lightning is not configured' });
+    const st = await lightningState();
+    if (st.state !== 'on')
+      return fail(400, {
+        syncError: st.state === 'invalid' ? st.problem : 'Lightning is not configured'
+      });
     const full = (await request.formData()).get('full') === '1';
     const s = await syncLightning({ force: true, full });
     if (!s.ok) return fail(502, { syncError: s.error ?? 'sync failed' });
