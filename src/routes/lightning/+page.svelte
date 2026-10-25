@@ -438,8 +438,10 @@
               {#if s.topUpFee}
                 {formatSats(s.topUpFee.serviceFeeSat)} service + {formatSats(
                   s.topUpFee.miningFeeSat
-                )} mining, for the {formatSats(data.topUpSat)}-sat block alone
-                <span class="block">plus 1% of the payment that sets it off</span>
+                )} mining
+                <span class="block"
+                  >{data.topUpSat / 1_000_000}M block only, + 1% of the payment</span
+                >
               {:else}
                 no quote from the node
               {/if}
@@ -526,10 +528,10 @@
   {/await}
 
   <!-- Ways to get paid: an invoice now, or the standing Lightning Address. -->
-  <div class="mt-8 grid items-start gap-6 lg:grid-cols-2">
-    <section aria-label="receive">
+  <div class="mt-8 grid gap-x-3 gap-y-6 lg:grid-cols-2">
+    <section aria-label="receive" class="flex flex-col">
       <h2 class="label-caps">receive</h2>
-      <div class="mt-2 rounded-md border border-border bg-surface p-4">
+      <div class="mt-2 flex-1 rounded-md border border-border bg-surface p-4">
         {#if invoice}
           <div class="flex flex-wrap items-start gap-4">
             <div
@@ -634,7 +636,7 @@
             <button
               type="submit"
               disabled={invoicing}
-              class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-bg transition-opacity duration-100 hover:opacity-90 disabled:opacity-60"
+              class="rounded-md border border-accent bg-accent px-3 py-1.5 text-[13px] font-medium text-bg transition-opacity duration-100 hover:opacity-90 disabled:opacity-60"
             >
               {invoicing ? 'Creating…' : 'Create invoice'}
             </button>
@@ -654,10 +656,10 @@
     </section>
 
     {#if data.address}
-      <section aria-label="lightning address">
+      <section aria-label="lightning address" class="flex flex-col">
         <h2 class="label-caps">lightning address</h2>
         <div
-          class="mt-2 flex flex-wrap items-center gap-4 rounded-md border border-border bg-surface p-4"
+          class="mt-2 flex flex-1 flex-wrap items-center gap-4 rounded-md border border-border bg-surface p-4"
         >
           <div class="size-32 shrink-0 overflow-hidden rounded bg-white p-1">
             <!-- an SVG rendered on the server from the configured address, never from payer input -->
