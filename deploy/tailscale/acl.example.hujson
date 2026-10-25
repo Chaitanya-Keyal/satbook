@@ -30,7 +30,9 @@
     {
       "src": "you@example.com",
       "accept": ["tag:satbook:443"],
-      "deny": ["tag:satbook:3000"],
+      // The app's own port, and the Lightning proxy if you enable it: both sit
+      // in the same network namespace as 443.
+      "deny": ["tag:satbook:3000", "tag:satbook:1055"],
     },
   ],
 }

@@ -9,10 +9,20 @@
 #   docker compose up -d --build    # deploy or update
 #   docker compose logs -f app      # logs
 name: satbook
+
+# Docker keeps container logs forever unless told otherwise.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
 services:
   ts:
-    image: tailscale/tailscale:stable
+    # Pinned: bump it on purpose, after reading Tailscale's changelog.
+    image: tailscale/tailscale:v1.104.2
     hostname: satbook
+    logging: *logging
     environment:
       TS_HOSTNAME: satbook # the device name, and so the first label of the URL
       TS_STATE_DIR: /var/lib/tailscale
@@ -33,6 +43,7 @@ services:
     build: ../.. # your satbook checkout
     image: satbook-app
     restart: unless-stopped
+    logging: *logging
     network_mode: service:ts
     env_file: .env
     environment:

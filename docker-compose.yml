@@ -1,16 +1,28 @@
 # satbook on this machine only, or behind a reverse proxy you run yourself.
 # For a tailnet-only deployment use deploy/tailscale/ instead. Both are covered
 # in docs/self-hosting.md.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
 services:
   app:
     build: .
     restart: unless-stopped
+    logging: *logging
     # Localhost only. Anything public goes through a TLS reverse proxy.
     ports:
       - '127.0.0.1:3000:3000'
     env_file: .env
     environment:
       - DATABASE_PATH=/data/btc.db
+      # The published port reaches the app through the container's Docker
+      # bridge address, so the app has to listen there. That also lets other
+      # users on this host open it at <bridge address>:3000. On a shared
+      # machine, use deploy/tailscale/, where the app listens on loopback only.
+      - HOST=0.0.0.0
     volumes:
       - btcdata:/data
 

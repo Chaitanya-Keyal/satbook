@@ -227,6 +227,22 @@ To roll back, check out the previous version, rebuild, and restore the backup
 you took before upgrading. Older code can't open a database after a newer
 version has migrated it.
 
+**The app runs as an unprivileged user** (the image's `bun`, uid 1000). That
+needs two things:
+
+- **The data volume must be writable by it.** A new volume already is. One
+  created by an older image (which ran as root) is not, so give it to that user
+  once, before starting the new image:
+
+  ```sh
+  docker compose run --rm --no-deps --user root --entrypoint chown app -R 1000:1000 /data
+  ```
+
+- **Secret files must be readable by it.** These are what the `*_FILE`
+  settings mount. If they belong to your own account, set `user:
+"<uid>:<gid>"` on the `app` service to run as that account instead, and use
+  that uid in the `chown` above.
+
 ## Operations
 
 - `docker compose ps` shows health from `GET /healthz`, which answers `ok`
