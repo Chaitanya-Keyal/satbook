@@ -227,21 +227,29 @@ To roll back, check out the previous version, rebuild, and restore the backup
 you took before upgrading. Older code can't open a database after a newer
 version has migrated it.
 
-**The app runs as an unprivileged user** (the image's `bun`, uid 1000). That
-needs two things:
+**Nothing runs as root.** The app runs as the image's `bun` user (uid 1000).
+In `deploy/tailscale/` the Tailscale container runs as `TS_UID` (default
+10000), and a one-off `owners` job hands it its state on every start. Both
+containers there also get a read-only root, no Linux capabilities, and CPU and
+memory caps. For the app, that needs two things:
 
 - **The data volume must be writable by it.** A new volume already is. One
   created by an older image (which ran as root) is not, so give it to that user
-  once, before starting the new image:
+  once, before starting the new image. Use a plain `docker run`: a hardened
+  service has no capability to change owners, even as root.
 
   ```sh
-  docker compose run --rm --no-deps --user root --entrypoint chown app -R 1000:1000 /data
+  docker run --rm --user root -v satbook_btcdata:/data --entrypoint chown satbook-app -R 1000:1000 /data
   ```
 
+  (`docker volume ls` shows the volume's name.) A `chown` on an empty volume
+  doesn't stick, because Docker copies the image's ownership back in while it's
+  empty, but an empty volume doesn't need one.
+
 - **Secret files must be readable by it.** These are what the `*_FILE`
-  settings mount. If they belong to your own account, set `user:
-"<uid>:<gid>"` on the `app` service to run as that account instead, and use
-  that uid in the `chown` above.
+  settings mount. Either give them to uid 1000 (keep them mode 600), or set
+  `user: "<uid>:<gid>"` on the `app` service to run as the account that owns
+  them, and use that uid in the `chown` above.
 
 ## Operations
 

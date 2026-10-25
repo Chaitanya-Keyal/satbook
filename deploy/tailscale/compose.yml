@@ -10,19 +10,50 @@
 #   docker compose logs -f app      # logs
 name: satbook
 
-# Docker keeps container logs forever unless told otherwise.
-x-logging: &logging
-  driver: json-file
-  options:
-    max-size: 10m
-    max-file: '3'
+# Every container: a read-only root, no Linux capabilities, no way to gain
+# privileges, capped processes, and logs that don't grow forever.
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ['no-new-privileges:true']
+  tmpfs: [/tmp]
+  pids_limit: 256
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '3'
 
 services:
+  # Hands the Tailscale state to TS_UID on every start, then exits, so the
+  # sidecar itself never runs as root.
+  owners:
+    <<: *hardened
+    image: tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d
+    user: '0:0'
+    # CHOWN to change owners; DAC_READ_SEARCH to walk directories TS_UID owns.
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    network_mode: none
+    restart: 'no'
+    entrypoint: [sh, -c, 'chown -R "$$TS_UID:$$TS_UID" /ts-state']
+    environment:
+      TS_UID: ${TS_UID:-10000}
+    volumes:
+      - ts-state:/ts-state
+    cpus: 0.25
+    mem_limit: 64m
+
   ts:
-    # Pinned: bump it on purpose, after reading Tailscale's changelog.
-    image: tailscale/tailscale:v1.104.2
+    <<: *hardened
+    # Pinned by digest: bump it on purpose, after reading Tailscale's changelog.
+    image: tailscale/tailscale:v1.104.2@sha256:b11583ad2e93e4671128538c88cf11f460444a5d7e449311dd1933a400ab849d
+    # Pick a uid that no account on your host uses (set TS_UID in a .env next
+    # to this file to change it).
+    user: '${TS_UID:-10000}:${TS_UID:-10000}'
     hostname: satbook
-    logging: *logging
+    # containerboot links its socket into /var/run/tailscale for the CLI.
+    tmpfs: [/tmp, /var/run/tailscale]
     environment:
       TS_HOSTNAME: satbook # the device name, and so the first label of the URL
       TS_STATE_DIR: /var/lib/tailscale
@@ -38,12 +69,16 @@ services:
     volumes:
       - ts-state:/var/lib/tailscale
       - ./serve.json:/config/serve.json:ro
-    restart: unless-stopped
+    depends_on:
+      owners:
+        condition: service_completed_successfully
+    cpus: 0.5
+    mem_limit: 256m
+
   app:
+    <<: *hardened
     build: ../.. # your satbook checkout
     image: satbook-app
-    restart: unless-stopped
-    logging: *logging
     network_mode: service:ts
     env_file: .env
     environment:
@@ -55,6 +90,9 @@ services:
     volumes:
       - btcdata:/data
     depends_on: [ts]
+    cpus: 1.0
+    mem_limit: 512m
+
 volumes:
   ts-state:
   btcdata:
