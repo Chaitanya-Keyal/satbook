@@ -22,7 +22,9 @@ without a node.
   off is bought too, so it adds 1% of itself; the receive card quotes the whole
   thing for a given amount.
 - **Ledger check:** the satbook wallet that stands for the node, checked against
-  the node's balance plus fee credit.
+  the node's balance plus fee credit. Lightning moves millisatoshis while both
+  sides count whole sats, so a 1-sat gap is shown as rounding, not as a
+  mismatch.
 - **Activity:** every payment in and out. Each one shows the Lightning Address
   comment or the zap sender and message, any liquidity fee, and whether it is
   already in the ledger.

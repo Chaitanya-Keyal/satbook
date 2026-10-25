@@ -9,7 +9,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToHex, hexToBytes } from '@noble/curves/utils.js';
-import { purchaseQuote } from '../src/lib/utils/lightning';
+import { ledgerCheck, purchaseQuote } from '../src/lib/utils/lightning';
 
 process.env.DATABASE_PATH = ':memory:';
 delete process.env.ADMIN_PASSWORD;
@@ -350,6 +350,16 @@ describe('invoices', () => {
     expect(parseCreatedInvoice({ paymentHash: 'ab', serialized: 'lnbc1xyz' })).toMatchObject({
       amountSat: null
     });
+  });
+});
+
+describe('ledger check', () => {
+  test('a sat of millisatoshi rounding still matches; more is a gap', () => {
+    expect(ledgerCheck(12_623, 12_623)).toBe('match');
+    expect(ledgerCheck(12_624, 12_623)).toBe('rounding');
+    expect(ledgerCheck(12_622, 12_623)).toBe('rounding');
+    expect(ledgerCheck(12_625, 12_623)).toBe('gap');
+    expect(ledgerCheck(0, 5_000)).toBe('gap');
   });
 });
 

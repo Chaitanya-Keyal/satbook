@@ -31,6 +31,19 @@ export function pct(part: number, whole: number): string {
 }
 
 /**
+ * Lightning moves millisatoshis, but the ledger, phoenixd's balance and its
+ * payment amounts are whole sats, each rounded on its own. A gap this small
+ * between the ledger and the node is rounding, not a missing payment.
+ */
+export const ROUNDING_TOLERANCE_SAT = 1;
+
+/** How the ledger's balance for the node's wallet compares with the node's own. */
+export function ledgerCheck(ledgerSats: number, nodeSats: number): 'match' | 'rounding' | 'gap' {
+  const gap = Math.abs(ledgerSats - nodeSats);
+  return gap === 0 ? 'match' : gap <= ROUNDING_TOLERANCE_SAT ? 'rounding' : 'gap';
+}
+
+/**
  * phoenixd quotes a liquidity fee's mining part at the current feerate, but the
  * purchase pays a raised one (lightning-kmp's adjustFeerate; the lower the
  * feerate, the bigger the raise): 1.6–2.5× to open a channel, and up to 3.8×

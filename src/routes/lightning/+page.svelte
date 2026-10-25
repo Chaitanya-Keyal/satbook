@@ -9,7 +9,13 @@
   import Tile from '$lib/components/Tile.svelte';
   import { unit } from '$lib/stores/unit.svelte';
   import { formatAmount, signedAmount } from '$lib/utils/display';
-  import { paymentLabel, pct, type ReceiveQuote, shortNpub } from '$lib/utils/lightning';
+  import {
+    ledgerCheck,
+    paymentLabel,
+    pct,
+    type ReceiveQuote,
+    shortNpub
+  } from '$lib/utils/lightning';
   import { formatInr, formatSats, mulDivRound, SATS_PER_BTC } from '$lib/utils/money';
   import {
     formatIstDateShort,
@@ -436,16 +442,22 @@
           {#if data.wallet && live.ledgerSats != null}
             {@const nodeSats = s.balance.balanceSat + s.balance.feeCreditSat}
             {@const diff = live.ledgerSats - nodeSats}
+            {@const check = ledgerCheck(live.ledgerSats, nodeSats)}
             <Tile
               label="ledger · {data.wallet.name}"
               value={formatAmount(live.ledgerSats, unit.value)}
-              valueClass={diff === 0 ? '' : 'text-loss'}
+              valueClass={check === 'gap' ? 'text-loss' : ''}
             >
               {#snippet subline()}
-                {#if diff === 0}
+                {#if check !== 'gap'}
                   <span class="inline-flex items-center gap-1 text-gain">
                     <Check size={11} aria-hidden="true" /> matches the node
                   </span>
+                  {#if check === 'rounding'}
+                    <span class="block"
+                      >within {formatSats(Math.abs(diff))} sat of millisatoshi rounding</span
+                    >
+                  {/if}
                 {:else}
                   {diff > 0
                     ? `${formatSats(diff)} sats more than`
