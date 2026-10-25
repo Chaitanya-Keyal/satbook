@@ -29,7 +29,9 @@ certificate.
 Two containers. `ts` runs Tailscale; `app` runs satbook inside `ts`'s network
 namespace (`network_mode: service:ts`), so nothing is published on the host.
 `tailscale serve` answers on port 443 with a `*.ts.net` certificate and passes
-requests to the app on `127.0.0.1:3000`.
+requests to the app on `127.0.0.1:3000`. The app listens on loopback only
+(`HOST=127.0.0.1`), so other users of the host can't reach it through the
+container's Docker bridge address either.
 
 1. **Prepare the tailnet.** Merge
    [`deploy/tailscale/acl.example.hujson`](../deploy/tailscale/acl.example.hujson)

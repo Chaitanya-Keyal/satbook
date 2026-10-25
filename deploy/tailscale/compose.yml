@@ -37,6 +37,10 @@ services:
     env_file: .env
     environment:
       DATABASE_PATH: /data/btc.db
+      # Listen on loopback only. serve and Tailscale's userspace forwarding both
+      # reach the app through 127.0.0.1; without this, other users on the host
+      # could open it through the container's Docker bridge address.
+      HOST: 127.0.0.1
     volumes:
       - btcdata:/data
     depends_on: [ts]

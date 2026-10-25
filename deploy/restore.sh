@@ -64,7 +64,7 @@ oneoff -e STAMP="$(date +%Y%m%d-%H%M%S)" --entrypoint bun "$SERVICE" -e '
 compose start "$SERVICE"
 trap - EXIT
 for _ in $(seq 1 30); do
-  if compose exec -T "$SERVICE" bun -e 'fetch(`http://localhost:${process.env.PORT ?? 3000}/healthz`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))' 2>/dev/null; then
+  if compose exec -T "$SERVICE" bun -e 'fetch(`http://127.0.0.1:${process.env.PORT ?? 3000}/healthz`).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))' 2>/dev/null; then
     echo "app is up"
     exit 0
   fi
