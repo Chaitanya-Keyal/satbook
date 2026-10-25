@@ -275,11 +275,15 @@ function settle(s: Scenario, r: Record<string, unknown>) {
     balance.feeCreditSat += amount;
     return;
   }
+  // Like lightning-kmp: both records carry the purchase's full fee (mining +
+  // service); fee credit pays part of it first, so the LSP takes only the rest
+  // out of the payment, and that shows in what was received.
   const total = service + Math.ceil(MOCK_MINING_FEE_SAT * (opens ? 2.5 : 1));
-  const fee = Math.max(0, total - balance.feeCreditSat);
-  balance.feeCreditSat = Math.max(0, balance.feeCreditSat - total);
-  r.receivedSat = amount - fee;
-  r.fees = fee * 1000;
+  const creditUsed = Math.min(balance.feeCreditSat, total);
+  balance.feeCreditSat -= creditUsed;
+  const kept = amount - (total - creditUsed);
+  r.receivedSat = kept;
+  r.fees = total * 1000;
   const at = r.completedAt as number;
   s.outgoing.push({
     type: 'outgoing_payment',
@@ -287,12 +291,11 @@ function settle(s: Scenario, r: Record<string, unknown>) {
     paymentId: uuid(`${String(r.paymentHash)} purchase`),
     txId: hash(`${String(r.paymentHash)} funding tx`),
     isPaid: true,
-    sent: fee,
-    fees: fee * 1000,
+    sent: total,
+    fees: total * 1000,
     completedAt: at + 2_000,
     createdAt: at
   });
-  const kept = amount - fee;
   if (channel) {
     channel.capacitySat += AUTO_LIQUIDITY_SAT + amount;
     channel.balanceSat += kept;

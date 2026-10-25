@@ -138,6 +138,13 @@ mining fee.
 - **A payment smaller than that fee** goes entirely into a non-refundable _fee
   credit_ (capped at 50,000 sat by default). You receive nothing spendable
   until the credit plus a later payment can cover a purchase.
+  - In the ledger, such a payment is ordinary income, and the node's wallet
+    counts its fee credit (the ledger check compares against balance plus fee
+    credit).
+  - When a purchase later spends the credit, phoenixd still reports the
+    purchase's full fee on the payment that set it off, and adds the credit's
+    share back into what that payment received. Recording that payment with its
+    full fee spends the credit in the ledger too.
 - **So fund the node yourself before the address goes public.** Pay it from
   another wallet you own. Type the amount on `/lightning`'s receive card to see
   what you'd keep, then make the invoice there. Or ask the node directly what a

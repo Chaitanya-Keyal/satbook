@@ -21,6 +21,7 @@ const { parseLnbitsPayment } = await import('../src/lib/server/lightning/lnbits'
 const { eventId, npub, parseNostrPubkey, parseZapRequest, verifyZapRequest } =
   await import('../src/lib/server/lightning/zap');
 const { syncLightning, lastSync } = await import('../src/lib/server/lightning/sync');
+const { figures } = await import('../src/lib/server/lightning/classify');
 const { listPayments, importKeyFor } = await import('../src/lib/server/lightning/node');
 const { db, schema } = await import('../src/lib/server/db');
 const mock = await import('../scripts/mock-phoenixd');
@@ -516,6 +517,56 @@ describe('receive quotes', () => {
       feeCreditSat: 5_000
     });
     expect((await call(tiny, 'GET', '/getinfo')).channels).toEqual([]);
+  });
+});
+
+describe('fee credit', () => {
+  test('spent on a purchase, it leaves the ledger equal to balance + credit', async () => {
+    // The reviewer's case: 5,000 lands in fee credit, then 40,000 sets off a
+    // purchase whose fee the credit partly pays. phoenixd (lightning-kmp)
+    // reports the purchase's FULL fee on the payment, and a received amount
+    // that already has the credit's share added back.
+    const node = mock.freshScenario();
+    const handler = mock.phoenixdHandler(node, 'limited', { paidAfterMs: 0 });
+    const call = (method: string, path: string, body?: string) =>
+      handler(
+        new Request(`http://phoenixd.test${path}`, {
+          method,
+          body,
+          headers: {
+            authorization: `Basic ${btoa(`:${mock.MOCK_PASSWORD.limited}`)}`,
+            ...(body ? { 'content-type': 'application/x-www-form-urlencoded' } : {})
+          }
+        })
+      ).then((r) => r.json() as Promise<Record<string, any>>);
+    const receive = async (amountSat: number) => {
+      const made = await call('POST', '/createinvoice', `amountSat=${amountSat}&description=x`);
+      return call('GET', `/payments/incoming/${made.paymentHash}`);
+    };
+
+    expect((await receive(5_000)).receivedSat).toBe(5_000);
+    expect(await call('GET', '/getbalance')).toMatchObject({ balanceSat: 0, feeCreditSat: 5_000 });
+    const big = await receive(40_000);
+    const fee = 21_400 + Math.ceil(411 * 2.5);
+    expect(big.fees).toBe(fee * 1000);
+    expect(big.receivedSat).toBe(40_000 - fee + 5_000);
+    expect(node.outgoing).toMatchObject([{ subType: 'auto_liquidity', fees: fee * 1000 }]);
+
+    // Review records each as INCOME of what the payer sent, less the fee.
+    const ledger = node.incoming.reduce(
+      (sum, r) =>
+        sum +
+        figures({
+          direction: 'in',
+          amountSat: r.receivedSat as number,
+          feeMsat: r.fees as number,
+          requestedSat: r.requestedSat as number
+        } as Parameters<typeof figures>[0]).creditedSats,
+      0
+    );
+    const after = await call('GET', '/getbalance');
+    expect(after.feeCreditSat).toBe(0);
+    expect(ledger).toBe(after.balanceSat + after.feeCreditSat);
   });
 });
 
