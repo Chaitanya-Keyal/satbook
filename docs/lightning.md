@@ -3,7 +3,8 @@
 satbook can act as the dashboard for a self-custodial Lightning node running
 [phoenixd](https://phoenix.acinq.co/server). [LNbits](https://lnbits.com) in
 front of the node can serve a Lightning Address. satbook **reads** the node and
-**never pays from it**. Sends and sweeps stay with phoenixd's own command line.
+creates invoices on it, but **never pays from it**. Sends and sweeps stay with
+phoenixd's own command line; satbook records them once they happen.
 
 The module is off unless `PHOENIXD_URL` is set. Nothing changes for a satbook
 without a node.
@@ -23,6 +24,10 @@ without a node.
 - **Activity:** every payment in and out. Each one shows the Lightning Address
   comment or the zap sender and message, any liquidity fee, and whether it is
   already in the ledger.
+- **Receive:** create an invoice (an amount, or any amount, and what it is
+  for). It shows as a QR code and flips to _paid_ when it is; the payment then
+  waits in the review inbox like any other. Invoices come straight from
+  phoenixd, so LNbits never sees them.
 - **Your Lightning Address,** with a QR code.
 
 Settings → Lightning lets you choose or create the node's wallet. _Test
