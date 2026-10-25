@@ -97,6 +97,12 @@ describe('suggest', () => {
     const lone = suggest(row({ direction: 'out', subType: 'auto_liquidity' }));
     expect(lone.actions).toEqual([]);
     expect(lone.manualReason).toMatch(/liquidity/);
+    const bump = suggest(row({ direction: 'out', subType: 'splice_cpfp', amountSat: 800 }));
+    expect(bump.actions).toEqual([]);
+    expect(bump.manualReason).toMatch(/fee bump/);
+    const close = suggest(row({ direction: 'out', subType: 'channel_close', amountSat: 50_000 }));
+    expect(close.actions).toEqual([]);
+    expect(close.manualReason).toMatch(/channel close/);
   });
 
   test('a fee larger than the payment: income only, nothing to transfer', () => {

@@ -73,6 +73,18 @@ export function figures(p: StoredPayment): Figures {
 
 const RECORDABLE_OUT = new Set(['lightning', 'splice_out']);
 
+const LIQUIDITY_BY_HAND =
+  'a liquidity purchase with no matching incoming payment — add its fee to the right row by hand';
+
+/** What to do with the outgoing kinds that cannot be recorded in one click. */
+const BY_HAND: Record<string, string> = {
+  auto_liquidity: LIQUIDITY_BY_HAND,
+  manual_liquidity: LIQUIDITY_BY_HAND,
+  splice_cpfp: 'a fee bump for an earlier on-chain transaction — add its fee to that row by hand',
+  channel_close:
+    'a channel close — record it by hand as a transfer to the wallet that received the funds'
+};
+
 export function suggest(p: StoredPayment): Suggestion {
   const f = figures(p);
   const base = { kind: 'income' as IncomeKind, counterparty: '', note: '', figures: f };
@@ -82,10 +94,7 @@ export function suggest(p: StoredPayment): Suggestion {
         ...base,
         actions: [],
         action: null,
-        manualReason:
-          p.subType === 'auto_liquidity' || p.subType === 'manual_liquidity'
-            ? 'a liquidity purchase with no matching incoming payment — add its fee to the right row by hand'
-            : 'record this one by hand'
+        manualReason: BY_HAND[p.subType] ?? 'record this one by hand'
       };
     if (f.amountSats <= 0)
       return { ...base, actions: [], action: null, manualReason: 'no amount left after the fee' };
