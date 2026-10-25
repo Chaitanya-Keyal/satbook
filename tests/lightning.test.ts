@@ -14,7 +14,7 @@ process.env.DATABASE_PATH = ':memory:';
 delete process.env.ADMIN_PASSWORD;
 
 const { lightningConfigState } = await import('../src/lib/server/lightning/config');
-const { parseIncoming, parseOutgoing, parseNodeInfo, parseBalance, phoenixd } =
+const { parseCreatedInvoice, parseIncoming, parseOutgoing, parseNodeInfo, parseBalance, phoenixd } =
   await import('../src/lib/server/lightning/phoenixd');
 const { parseLnbitsPayment } = await import('../src/lib/server/lightning/lnbits');
 const { eventId, npub, parseZapRequest, verifyZapRequest } =
@@ -247,7 +247,7 @@ function routeFetch() {
     const host = new URL(req.url).host;
     if (host === 'phoenixd.test') {
       if (phoenixdDown) throw new TypeError('connection refused');
-      return mock.phoenixdHandler(SCENARIO, scope)(req);
+      return mock.phoenixdHandler(SCENARIO, scope, { paidAfterMs: 0 })(req);
     }
     if (host === 'lnbits.test') {
       if (lnbitsDown) return new Response('bad gateway', { status: 502 });
@@ -295,6 +295,62 @@ describe('phoenixd client', () => {
 });
 
 // --- sync ---------------------------------------------------------------------------
+
+describe('invoices', () => {
+  beforeEach(() => {
+    routeFetch();
+    phoenixdDown = false;
+    scope = 'limited';
+    useMockEnv();
+  });
+
+  const client = () => {
+    const s = lightningConfigState();
+    if (s.state !== 'on') throw new Error('config');
+    return phoenixd(s.config);
+  };
+
+  test('the limited password creates an invoice; a lookup shows it paid; a sync picks it up', async () => {
+    const made = await client().createInvoice({
+      amountSat: 5_000,
+      description: 'coffee money',
+      expirySeconds: 3600
+    });
+    expect(made.ok).toBe(true);
+    if (!made.ok) return;
+    expect(made.data.serialized).toMatch(/^lnbc/);
+    expect(made.data.amountSat).toBe(5_000);
+
+    const looked = await client().getIncoming(made.data.paymentHash);
+    expect(looked.ok && looked.data.isPaid).toBe(true);
+    expect(looked.ok && looked.data.receivedSat).toBe(5_000);
+
+    await syncLightning({ force: true });
+    const row = db
+      .select()
+      .from(schema.lightningPayments)
+      .all()
+      .find((r) => r.paymentHash === made.data.paymentHash)!;
+    expect(row.description).toBe('coffee money');
+    expect(row.requestedSat).toBe(5_000);
+  });
+
+  test('an amountless invoice leaves the amount to the payer', async () => {
+    const made = await client().createInvoice({
+      amountSat: null,
+      description: 'tip jar',
+      expirySeconds: 600
+    });
+    expect(made.ok && made.data.amountSat).toBeNull();
+  });
+
+  test('a malformed reply is not an invoice', () => {
+    expect(parseCreatedInvoice({ paymentHash: 'ab', serialized: 'not-a-bolt11' })).toBeNull();
+    expect(parseCreatedInvoice({ paymentHash: 'ab', serialized: 'lnbc1xyz' })).toMatchObject({
+      amountSat: null
+    });
+  });
+});
 
 describe('sync', () => {
   beforeEach(() => {

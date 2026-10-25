@@ -1,5 +1,6 @@
 <script lang="ts">
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import Check from '@lucide/svelte/icons/check';
   import Copy from '@lucide/svelte/icons/copy';
   import RefreshCw from '@lucide/svelte/icons/refresh-cw';
@@ -10,7 +11,12 @@
   import { formatAmount, signedAmount } from '$lib/utils/display';
   import { paymentLabel, pct, shortNpub } from '$lib/utils/lightning';
   import { formatInr, formatSats, mulDivRound, SATS_PER_BTC } from '$lib/utils/money';
-  import { formatIstDateShort, formatIstFull, formatRelative } from '$lib/utils/time';
+  import {
+    formatIstDateShort,
+    formatIstFull,
+    formatRelative,
+    utcSecToIstInput
+  } from '$lib/utils/time';
   import type { ActionData, PageData } from './$types';
 
   let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -20,6 +26,64 @@
   const EM = '—';
   let syncing = $state(false);
   let copied = $state(false);
+
+  // --- invoice ---------------------------------------------------------------
+
+  type Invoice = Extract<NonNullable<ActionData>, { invoice: unknown }>['invoice'];
+  let invoice = $state<Invoice | null>(null);
+  let invoiceStatus = $state<'waiting' | 'paid' | 'expired'>('waiting');
+  let invoicePaid = $state<{ sat: number; feeSat: number } | null>(null);
+  let invoicing = $state(false);
+  let copiedInvoice = $state(false);
+  // The action result keeps the last invoice; remember which one was taken
+  // so "New invoice" is not undone by the same result.
+  let shownHash: string | null = null;
+
+  // A freshly made invoice arrives as the action's result.
+  $effect(() => {
+    const made = form && 'invoice' in form ? form.invoice : null;
+    if (made && made.paymentHash !== shownHash) {
+      shownHash = made.paymentHash;
+      invoice = made;
+      invoiceStatus = 'waiting';
+      invoicePaid = null;
+    }
+  });
+
+  // While it waits, ask every few seconds whether it has been paid.
+  $effect(() => {
+    if (!invoice || invoiceStatus !== 'waiting') return;
+    const { paymentHash, expiresAt } = invoice;
+    const timer = setInterval(async () => {
+      if (Date.now() / 1000 > expiresAt) {
+        invoiceStatus = 'expired';
+        return;
+      }
+      try {
+        const res = await fetch(`/api/lightning/invoice/${paymentHash}`);
+        if (!res.ok) return;
+        const r = (await res.json()) as { paid: boolean; receivedSat?: number; feeMsat?: number };
+        if (r.paid) {
+          invoicePaid = { sat: r.receivedSat ?? 0, feeSat: Math.round((r.feeMsat ?? 0) / 1000) };
+          invoiceStatus = 'paid';
+          await invalidateAll(); // the payment is in the activity and the review inbox now
+        }
+      } catch {
+        /* offline for a moment — the next tick tries again */
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  });
+
+  async function copyInvoice(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+      copiedInvoice = true;
+      setTimeout(() => (copiedInvoice = false), 1500);
+    } catch {
+      /* clipboard unavailable — the invoice text is selectable */
+    }
+  }
 
   const inr = (sats: number) =>
     data.configured && data.btcInr != null
@@ -213,10 +277,6 @@
         <div class="h-[92px] skeleton rounded-md border border-border bg-surface"></div>
       {/each}
     </div>
-    <section class="mt-8" aria-label="activity">
-      <h2 class="label-caps">activity</h2>
-      {@render activity(data.stored)}
-    </section>
   {:then live}
     {#if 'failed' in live}
       <p role="alert" class="mt-3 text-xs text-loss">Could not load the node: {live.failed}</p>
@@ -346,7 +406,172 @@
           {live.sync.warning}; comments and zaps may be missing.
         </p>
       {/if}
+    {/if}
+  {/await}
 
+  <!-- Ways to get paid: an invoice now, or the standing Lightning Address. -->
+  <div class="mt-8 grid items-start gap-6 lg:grid-cols-2">
+    <section aria-label="receive">
+      <h2 class="label-caps">receive</h2>
+      <div class="mt-2 rounded-md border border-border bg-surface p-4">
+        {#if invoice}
+          <div class="flex flex-wrap items-start gap-4">
+            <div
+              class="size-48 shrink-0 overflow-hidden rounded bg-white p-1 transition-opacity duration-100 {invoiceStatus ===
+              'waiting'
+                ? ''
+                : 'opacity-25'}"
+            >
+              <!-- an SVG rendered on the server from the node's invoice, never from payer input -->
+              {@html invoice.qr}
+            </div>
+            <div class="min-w-0 flex-1 text-xs">
+              <p class="text-[13px]">
+                {invoice.amountSat != null
+                  ? formatAmount(invoice.amountSat, unit.value)
+                  : 'Any amount'}
+                <span class="text-muted">· {invoice.description}</span>
+              </p>
+              <p class="mt-1 num text-[11px] break-all text-muted" title={invoice.serialized}>
+                {invoice.serialized.slice(0, 28)}…{invoice.serialized.slice(-8)}
+              </p>
+              <p class="mt-3" aria-live="polite">
+                {#if invoiceStatus === 'paid' && invoicePaid}
+                  <span class="text-gain">Paid · +{formatSats(invoicePaid.sat)} sats</span>
+                  {#if invoicePaid.feeSat > 0}
+                    <span class="text-muted">
+                      (after a {formatSats(invoicePaid.feeSat)} sat liquidity purchase)</span
+                    >
+                  {/if}
+                  <span class="text-muted">
+                    — it is in the activity below and waiting in
+                    <a href="/lightning/review" class="text-text underline">review</a>.
+                  </span>
+                {:else if invoiceStatus === 'expired'}
+                  <span class="text-muted">Expired unpaid.</span>
+                {:else}
+                  <span class="text-muted">
+                    Waiting for payment · expires {utcSecToIstInput(invoice.expiresAt).slice(11)} IST
+                  </span>
+                {/if}
+              </p>
+              <div class="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onclick={() => copyInvoice(invoice!.serialized)}
+                  class="inline-flex items-center gap-1 rounded border border-border px-2 py-0.5 text-[11px] text-muted transition-colors duration-100 hover:text-text"
+                >
+                  {#if copiedInvoice}<Check size={11} aria-hidden="true" /> Copied{:else}<Copy
+                      size={11}
+                      aria-hidden="true"
+                    /> Copy invoice{/if}
+                </button>
+                <button
+                  type="button"
+                  onclick={() => (invoice = null)}
+                  class="rounded border border-border px-2 py-0.5 text-[11px] text-muted transition-colors duration-100 hover:text-text"
+                >
+                  New invoice
+                </button>
+              </div>
+            </div>
+          </div>
+        {:else}
+          <form
+            method="POST"
+            action="?/invoice"
+            class="flex flex-wrap items-end gap-2"
+            use:enhance={() => {
+              invoicing = true;
+              return async ({ update }) => {
+                await update({ reset: false });
+                invoicing = false;
+              };
+            }}
+          >
+            <label class="text-[11px] text-muted">
+              Amount, sats
+              <input
+                name="amountSat"
+                inputmode="numeric"
+                placeholder="any"
+                class="mt-1 block w-32 rounded-md border border-border bg-bg px-2.5 py-1.5 num text-[13px] transition-colors duration-100 placeholder:text-muted/70 hover:border-muted/60"
+              />
+            </label>
+            <label class="min-w-48 flex-1 text-[11px] text-muted">
+              What it is for
+              <input
+                name="description"
+                required
+                maxlength="128"
+                placeholder="Shown to the payer"
+                class="mt-1 block w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-[13px] transition-colors duration-100 placeholder:text-muted/70 hover:border-muted/60"
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={invoicing}
+              class="rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-bg transition-opacity duration-100 hover:opacity-90 disabled:opacity-60"
+            >
+              {invoicing ? 'Creating…' : 'Create invoice'}
+            </button>
+          </form>
+          {#if form && 'invoiceError' in form && form.invoiceError}
+            <p role="alert" class="mt-2 text-xs text-loss">{form.invoiceError}</p>
+          {/if}
+          <p class="mt-2 text-[11px] text-muted">
+            A one-hour invoice from this node. Once paid, it shows up in the activity and the review
+            inbox like any other payment.
+          </p>
+        {/if}
+      </div>
+    </section>
+
+    {#if data.address}
+      <section aria-label="lightning address">
+        <h2 class="label-caps">lightning address</h2>
+        <div
+          class="mt-2 flex flex-wrap items-center gap-4 rounded-md border border-border bg-surface p-4"
+        >
+          <div class="size-32 shrink-0 overflow-hidden rounded bg-white p-1">
+            <!-- an SVG rendered on the server from the configured address, never from payer input -->
+            {@html data.address.qr}
+          </div>
+          <div class="min-w-0">
+            <p class="num text-sm break-all">{data.address.text}</p>
+            <button
+              type="button"
+              onclick={() => copyAddress(data.address!.text)}
+              class="mt-2 inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted transition-colors duration-100 hover:text-text"
+            >
+              {#if copied}<Check size={11} aria-hidden="true" /> Copied{:else}<Copy
+                  size={11}
+                  aria-hidden="true"
+                /> Copy{/if}
+            </button>
+            <p class="mt-2 text-[11px] text-muted">
+              Payments to it {data.lnbits
+                ? 'arrive through LNbits, with their comments and zaps'
+                : 'arrive at this node'}.
+            </p>
+          </div>
+        </div>
+      </section>
+    {/if}
+  </div>
+
+  {#await data.live}
+    <section class="mt-8" aria-label="activity">
+      <h2 class="label-caps">activity</h2>
+      {@render activity(data.stored)}
+    </section>
+  {:then live}
+    {#if 'failed' in live}
+      <section class="mt-8" aria-label="activity">
+        <h2 class="label-caps">activity</h2>
+        {@render activity(data.stored)}
+      </section>
+    {:else}
       <section class="mt-8" aria-label="activity">
         <div class="flex items-baseline justify-between gap-3">
           <h2 class="label-caps">activity</h2>
@@ -362,36 +587,4 @@
       </section>
     {/if}
   {/await}
-
-  {#if data.address}
-    <section class="mt-8" aria-label="lightning address">
-      <h2 class="label-caps">lightning address</h2>
-      <div
-        class="mt-2 flex flex-wrap items-center gap-4 rounded-md border border-border bg-surface p-4"
-      >
-        <div class="size-32 shrink-0 overflow-hidden rounded bg-white p-1">
-          <!-- an SVG rendered on the server from the configured address, never from payer input -->
-          {@html data.address.qr}
-        </div>
-        <div class="min-w-0">
-          <p class="num text-sm break-all">{data.address.text}</p>
-          <button
-            type="button"
-            onclick={() => copyAddress(data.address!.text)}
-            class="mt-2 inline-flex items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[11px] text-muted transition-colors duration-100 hover:text-text"
-          >
-            {#if copied}<Check size={11} aria-hidden="true" /> Copied{:else}<Copy
-                size={11}
-                aria-hidden="true"
-              /> Copy{/if}
-          </button>
-          <p class="mt-2 text-[11px] text-muted">
-            Payments to it {data.lnbits
-              ? 'arrive through LNbits, with their comments and zaps'
-              : 'arrive at this node'}.
-          </p>
-        </div>
-      </div>
-    </section>
-  {/if}
 {/if}

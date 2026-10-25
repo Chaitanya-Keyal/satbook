@@ -11,7 +11,8 @@
 //
 // Environment: MOCK_PHOENIXD_PORT (9740), MOCK_LNBITS_PORT (5000),
 // MOCK_CHAIN (mainnet), MOCK_SCOPE (limited | full: the password satbook is
-// pretending to hold).
+// pretending to hold), MOCK_INVOICE_PAID_AFTER (8: seconds until an invoice
+// made through the mock pays itself).
 
 import { schnorr } from '@noble/curves/secp256k1.js';
 import { bytesToHex, hexToBytes } from '@noble/curves/utils.js';
@@ -49,6 +50,8 @@ export interface Scenario {
   incoming: Record<string, unknown>[];
   outgoing: Record<string, unknown>[];
   lnbits: Record<string, unknown>[];
+  /** Invoices made through POST /createinvoice, by payment hash. */
+  invoices: Map<string, { createdAt: number; record: Record<string, unknown> }>;
 }
 
 /** The history, relative to `nowSec`, with phoenixd's ms timestamps and msat fees. */
@@ -217,7 +220,8 @@ export function scenario(nowSec: number, chain = 'mainnet'): Scenario {
     },
     incoming,
     outgoing,
-    lnbits
+    lnbits,
+    invoices: new Map()
   };
 }
 
@@ -227,8 +231,17 @@ const json = (body: unknown, status = 200) =>
     headers: { 'content-type': 'application/json' }
   });
 
-/** phoenixd's API over `s`. Pure: (Request) → Response, so tests can call it directly. */
-export function phoenixdHandler(s: Scenario, scope: 'limited' | 'full' = 'limited') {
+/**
+ * phoenixd's API over `s`. Pure: (Request) → Response, so tests can call it
+ * directly. An invoice made here is paid by itself `paidAfterMs` after its
+ * creation, the first time it is looked up from then on.
+ */
+export function phoenixdHandler(
+  s: Scenario,
+  scope: 'limited' | 'full' = 'limited',
+  opts: { paidAfterMs?: number } = {}
+) {
+  const paidAfterMs = opts.paidAfterMs ?? 8_000;
   return async (req: Request): Promise<Response> => {
     const auth = req.headers.get('authorization') ?? '';
     const password = Buffer.from(auth.replace(/^Basic /, ''), 'base64')
@@ -259,14 +272,58 @@ export function phoenixdHandler(s: Scenario, scope: 'limited' | 'full' = 'limite
       }
       case 'GET /payments/outgoing':
         return json(page(s.outgoing));
+      case 'POST /createinvoice': {
+        const form = new URLSearchParams(await req.text());
+        const amountSat = form.has('amountSat') ? Number(form.get('amountSat')) : null;
+        const paymentHash = hash(`invoice ${s.invoices.size} ${form.get('description')}`);
+        const serialized = `lnbc${amountSat ?? ''}n1mock${paymentHash.slice(0, 40)}`;
+        const now = Date.now();
+        s.invoices.set(paymentHash, {
+          createdAt: now,
+          record: {
+            type: 'incoming_payment',
+            subType: 'lightning',
+            paymentHash,
+            preimage: hash(`${paymentHash} preimage`),
+            externalId: '',
+            description: form.get('description') ?? '',
+            invoice: serialized,
+            isPaid: false,
+            isExpired: false,
+            ...(amountSat != null ? { requestedSat: amountSat } : {}),
+            receivedSat: 0,
+            fees: 0,
+            expiresAt: now + Number(form.get('expirySeconds') ?? 3600) * 1000,
+            createdAt: now
+          }
+        });
+        return json({ ...(amountSat != null ? { amountSat } : {}), paymentHash, serialized });
+      }
       case 'POST /payinvoice':
         // The limited password is refused before the invoice is read; only
         // the full one gets far enough to reject it. Nothing is ever paid.
         return scope === 'full'
           ? new Response('invalid invoice', { status: 400 })
           : new Response('Unauthorized', { status: 401 });
-      default:
+      default: {
+        const m = /^\/payments\/incoming\/([0-9a-f]{64})$/.exec(url.pathname);
+        if (req.method === 'GET' && m) {
+          const inv = s.invoices.get(m[1]);
+          if (inv) {
+            const r = inv.record;
+            if (!r.isPaid && Date.now() - inv.createdAt >= paidAfterMs) {
+              r.isPaid = true;
+              r.receivedSat = (r.requestedSat as number | undefined) ?? 1_000;
+              r.completedAt = Date.now();
+              s.incoming.push(r);
+            }
+            return json(r);
+          }
+          const known = s.incoming.find((p) => p.paymentHash === m[1]);
+          return known ? json(known) : new Response('Not Found', { status: 404 });
+        }
         return new Response('Not Found', { status: 404 });
+      }
     }
   };
 }
@@ -296,7 +353,13 @@ if (import.meta.main) {
   const scope = process.env.MOCK_SCOPE === 'full' ? 'full' : 'limited';
   const phoenixdPort = Number(process.env.MOCK_PHOENIXD_PORT ?? 9740);
   const lnbitsPort = Number(process.env.MOCK_LNBITS_PORT ?? 5000);
-  Bun.serve({ hostname: '127.0.0.1', port: phoenixdPort, fetch: phoenixdHandler(s, scope) });
+  Bun.serve({
+    hostname: '127.0.0.1',
+    port: phoenixdPort,
+    fetch: phoenixdHandler(s, scope, {
+      paidAfterMs: Number(process.env.MOCK_INVOICE_PAID_AFTER ?? 8) * 1000
+    })
+  });
   Bun.serve({ hostname: '127.0.0.1', port: lnbitsPort, fetch: lnbitsHandler(s) });
   console.log(
     `mock phoenixd on http://127.0.0.1:${phoenixdPort} (password ${MOCK_PASSWORD[scope]})`

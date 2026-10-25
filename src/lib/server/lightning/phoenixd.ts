@@ -1,8 +1,9 @@
-// Read-only phoenixd client. Deliberately has no paying or sending calls: the
-// module is receive-only, and with phoenixd's limited-access password the node
-// would refuse them anyway. Units are normalized here, once: phoenixd sends
-// timestamps in milliseconds and fees in millisatoshis; everything that leaves
-// this file is unix seconds and whole sats (fees stay msat, named so).
+// phoenixd client for the receive side: reads, and creates invoices. It
+// deliberately has no paying or sending calls: the module is receive-only, and
+// with phoenixd's limited-access password the node would refuse them anyway.
+// Units are normalized here, once: phoenixd sends timestamps in milliseconds
+// and fees in millisatoshis; everything that leaves this file is unix seconds
+// and whole sats (fees stay msat, named so).
 
 import type { LightningConfig } from './config';
 import { type Fetched, int, isObj, num, request, requestJson, str, text } from './http';
@@ -65,6 +66,14 @@ export interface OutgoingPayment {
   feesMsat: number;
   createdAt: number;
   completedAt: number | null;
+}
+
+export interface CreatedInvoice {
+  paymentHash: string;
+  /** The BOLT11 string. */
+  serialized: string;
+  /** Null for an amountless invoice (the payer chooses). */
+  amountSat: number | null;
 }
 
 /** Only channels in this state count toward balance and inbound liquidity. */
@@ -160,6 +169,14 @@ export function parseOutgoing(j: unknown): OutgoingPayment | null {
   };
 }
 
+export function parseCreatedInvoice(j: unknown): CreatedInvoice | null {
+  if (!isObj(j)) return null;
+  const paymentHash = str(j.paymentHash);
+  const serialized = str(j.serialized);
+  if (!paymentHash || !serialized || !/^ln/i.test(serialized)) return null;
+  return { paymentHash, serialized, amountSat: int(j.amountSat) };
+}
+
 const listOf =
   <T>(item: (j: unknown) => T | null) =>
   (j: unknown): T[] | null => {
@@ -192,6 +209,28 @@ export function phoenixd(cfg: LightningConfig) {
       get(
         `/payments/incoming?from=${fromSec * 1000}&limit=${limit}&offset=${offset}`,
         listOf(parseIncoming)
+      ),
+    /** One incoming payment by hash, paid or not. */
+    getIncoming: (paymentHash: string) =>
+      get(`/payments/incoming/${encodeURIComponent(paymentHash)}`, parseIncoming),
+    /**
+     * A BOLT11 invoice. Receiving is all the limited password needs; phoenixd
+     * caps the description at 128 characters.
+     */
+    createInvoice: (o: { amountSat: number | null; description: string; expirySeconds: number }) =>
+      requestJson(
+        `${cfg.phoenixdUrl}/createinvoice`,
+        {
+          headers,
+          proxy: cfg.proxy,
+          method: 'POST',
+          form: {
+            description: o.description.slice(0, 128),
+            expirySeconds: String(o.expirySeconds),
+            ...(o.amountSat != null ? { amountSat: String(o.amountSat) } : {})
+          }
+        },
+        parseCreatedInvoice
       ),
     /** Successful outgoing payments (phoenixd leaves them unordered). */
     listOutgoing: (limit: number, offset: number) =>
