@@ -4,7 +4,7 @@
 // network, no ports). DATABASE_PATH must be set before the db module loads,
 // so server modules are imported dynamically.
 import { afterAll, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { schnorr } from '@noble/curves/secp256k1.js';
@@ -81,8 +81,12 @@ describe('config', () => {
     process.env.PHOENIXD_URL = 'http://127.0.0.1:9740';
     process.env.PHOENIXD_PASSWORD = 'from-env';
     process.env.PHOENIXD_PASSWORD_FILE = join(dir, 'pw');
-    const s = lightningConfigState();
-    expect(s.state === 'on' && s.config.phoenixdPassword).toBe('from-file');
+    try {
+      const s = lightningConfigState();
+      expect(s.state === 'on' && s.config.phoenixdPassword).toBe('from-file');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
