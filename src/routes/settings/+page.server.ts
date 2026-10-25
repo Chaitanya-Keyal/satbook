@@ -1,6 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { eq } from 'drizzle-orm';
-import { changePassword, verifyPassword } from '$lib/server/auth';
+import {
+  changePassword,
+  recordLoginSuccess,
+  reserveLoginAttempt,
+  verifyPassword
+} from '$lib/server/auth';
 import { db, schema } from '$lib/server/db';
 import { getLedger } from '$lib/server/ledger';
 import { displayOrigin, lightningConfigState } from '$lib/server/lightning/config';
@@ -118,6 +123,13 @@ export const actions: Actions = {
   },
 
   changePassword: async ({ request }) => {
+    // The login limiter, charged before any await as on /login: otherwise this
+    // form would let a stolen session guess the password unthrottled.
+    const gate = reserveLoginAttempt();
+    if (!gate.allowed)
+      return fail(429, {
+        passwordError: `too many attempts — try again in ${Math.ceil(gate.retryAfterSec / 60)} min`
+      });
     const form = await request.formData();
     const current = form.get('current');
     const next = form.get('new');
@@ -132,6 +144,7 @@ export const actions: Actions = {
       return fail(400, { passwordError: 'new password and confirmation do not match' });
     if (!(await verifyPassword(current)))
       return fail(400, { passwordError: 'current password is incorrect' });
+    recordLoginSuccess();
     await changePassword(next); // destroys every session, including this one
     redirect(303, '/login');
   }

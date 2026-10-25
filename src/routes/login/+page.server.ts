@@ -3,6 +3,8 @@ import {
   createSession,
   recordLoginSuccess,
   reserveLoginAttempt,
+  SESSION_COOKIE,
+  sessionCookieOptions,
   verifyPassword
 } from '$lib/server/auth';
 import type { Actions, PageServerLoad } from './$types';
@@ -29,13 +31,7 @@ export const actions: Actions = {
 
     recordLoginSuccess();
     const token = createSession();
-    cookies.set('session', token, {
-      path: '/',
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 60 * 60 * 24 * 30
-    });
+    cookies.set(SESSION_COOKIE, token, sessionCookieOptions);
     redirect(303, '/');
   }
 };

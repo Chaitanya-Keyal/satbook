@@ -19,6 +19,25 @@ const LIMITER_KEY = 'global';
 
 const nowSec = () => Math.floor(Date.now() / 1000);
 
+const SECURE = process.env.NODE_ENV === 'production';
+
+/**
+ * The session cookie. In production it carries the `__Host-` prefix: the
+ * browser then insists on Secure, Path=/ and no Domain, so another host on the
+ * same site (every *.ts.net name is one site) cannot set or shadow it.
+ * Browsers accept that prefix only on Secure cookies, hence plain `session` in
+ * development.
+ */
+export const SESSION_COOKIE = SECURE ? '__Host-session' : 'session';
+
+export const sessionCookieOptions = {
+  path: '/',
+  httpOnly: true,
+  sameSite: 'lax' as const,
+  secure: SECURE,
+  maxAge: SESSION_TTL_SEC
+};
+
 function sha256Hex(input: string): string {
   return new Bun.CryptoHasher('sha256').update(input).digest('hex');
 }
