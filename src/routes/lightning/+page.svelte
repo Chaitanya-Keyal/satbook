@@ -340,10 +340,16 @@
         </dd>
       </dl>
       <p class="mt-1.5 text-[11px] text-muted">
-        phoenixd quotes {formatSats(p.quotedFeeSat)} at today's feerate; {p.opensChannel
-          ? 'opening the channel pays a raised one'
-          : 'the splice may pay a raised one'}.{#if p.feeCreditSat > 0}
-          The {formatSats(p.feeCreditSat)} sats of fee credit pay the fee first.{/if}
+        phoenixd quotes {formatSats(p.quotedFeeSat)} at today's feerate.
+        {#if p.opensChannel}
+          Opening the channel pays a raised one.
+        {:else}
+          A splice can pay a raised one, and the node also pays its own share of the splice's mining
+          fee, which the quote leaves out, so you may keep a little less than shown.
+        {/if}
+        {#if p.feeCreditSat > 0}
+          The {formatSats(p.feeCreditSat)} sats of fee credit pay the fee first.
+        {/if}
       </p>
     {/if}
   </div>

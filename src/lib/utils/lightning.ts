@@ -49,6 +49,8 @@ export function ledgerCheck(ledgerSats: number, nodeSats: number): 'match' | 'ro
  * feerate, the bigger the raise): 1.6–2.5× to open a channel, and up to 3.8×
  * to splice into one whose balance cannot cover the fees. 3.8× is also the
  * feerate it tests a payment against before taking all of it as fee credit.
+ * A splice also pays the node's own share of the splice transaction's mining
+ * fee, which phoenixd's quote leaves out and these ranges do not cover.
  */
 export const FEERATE_RAISE = { open: [1.6, 2.5], splice: [1, 3.8] } as const;
 

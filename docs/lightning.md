@@ -163,7 +163,10 @@ mining fee.
   and the fee comes out of that payment. In the ledger that payment is an
   INCOME with a _fee taken on arrival_: the amount is what the payer sent, and
   the fee is consumed untaxed. _Receivable_ on the dashboard shows how far off
-  that is.
+  that is. That purchase splices into the existing channel. Besides a possibly
+  raised feerate, the node pays its own share of the splice's mining fee, which
+  phoenixd's quote leaves out, so the receive card's estimate can run a little
+  low there.
 
 ## How satbook reads the node
 
