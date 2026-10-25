@@ -114,6 +114,32 @@ The device name ends up in the public Certificate Transparency logs when its
 certificate is issued. People can learn the name, but they still can't reach
 the device.
 
+### Restarting
+
+`app` shares the network of `ts` as it was when the app started. If `ts`
+restarts on its own (a crash, or a `docker restart` of it), it comes back with
+a new network and the app stays on the old, dead one. The site then answers
+502, while `docker compose ps` still shows the app up and healthy, because its
+health check runs inside that dead network too. Restart the app to put it back:
+
+```sh
+docker compose restart app
+```
+
+Don't restart the whole stack with a bare `docker compose restart`. It restarts
+every container at once, so the app can start before `ts` is back and end up
+stopped or cut off. Recreate it in order instead:
+
+```sh
+docker compose up -d --force-recreate
+```
+
+A plain `docker compose up -d` recreates the app whenever it recreates `ts`,
+for example after you change the Tailscale image, so upgrades are safe. It
+doesn't repair a stack that is already cut off, because nothing in it changed.
+To recover from a `ts` crash automatically, run a job on the host that restarts
+`app` whenever `ts` has started after it.
+
 ## Public, behind a reverse proxy
 
 The repo's `docker-compose.yml` publishes the app on `127.0.0.1:3000` only. Put
@@ -254,7 +280,8 @@ memory caps. For the app, that needs two things:
 ## Operations
 
 - `docker compose ps` shows health from `GET /healthz`, which answers `ok`
-  without a login.
+  without a login. In the tailnet setup a healthy app can still be unreachable
+  after `ts` restarts; see [Restarting](#restarting).
 - `docker compose logs -f app` follows the logs.
 - The database is `/data/btc.db` in the `btcdata` volume (named
   `satbook_btcdata` on the host). While the app runs it has `-wal` and `-shm`
