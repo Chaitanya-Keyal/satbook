@@ -392,11 +392,14 @@ describe('invoices', () => {
 });
 
 describe('ledger check', () => {
-  test('a sat of millisatoshi rounding still matches; more is a gap', () => {
+  test('the ledger may trail the node by rounding, never lead it', () => {
     expect(ledgerCheck(12_623, 12_623)).toBe('match');
-    expect(ledgerCheck(12_624, 12_623)).toBe('rounding');
     expect(ledgerCheck(12_622, 12_623)).toBe('rounding');
-    expect(ledgerCheck(12_625, 12_623)).toBe('gap');
+    expect(ledgerCheck(12_624, 12_623)).toBe('gap');
+    expect(ledgerCheck(12_621, 12_623)).toBe('gap');
+    // less than a sat per payment that carried a fraction
+    expect(ledgerCheck(12_620, 12_623, 3)).toBe('rounding');
+    expect(ledgerCheck(12_619, 12_623, 3)).toBe('gap');
     expect(ledgerCheck(0, 5_000)).toBe('gap');
   });
 });

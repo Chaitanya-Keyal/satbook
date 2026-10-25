@@ -88,6 +88,21 @@ describe('suggest', () => {
     expect(suggest(row({ zapPubkey: pk, zapVerified: false })).counterparty).toBe('');
   });
 
+  test('fees round up and amounts down, as phoenixd rounds them', () => {
+    // A 12,470-sat invoice paid with a 53,880-msat routing fee: phoenixd
+    // reports sent = 12,523 (the total, rounded down) and fees = 53,880.
+    expect(
+      figures(row({ direction: 'out', amountSat: 12_523, feeMsat: 53_880, requestedSat: null }))
+    ).toMatchObject({ amountSats: 12_470, feeSats: 54 });
+    // A 10,000-sat invoice that cost a 1,200-msat fee: phoenixd's receivedSat
+    // is 9,998, and that is what the ledger credits.
+    expect(figures(row({ amountSat: 9_998, feeMsat: 1_200, requestedSat: 10_000 }))).toMatchObject({
+      amountSats: 10_000,
+      feeSats: 2,
+      creditedSats: 9_998
+    });
+  });
+
   test('what each outgoing kind can become', () => {
     expect(
       suggest(row({ direction: 'out', subType: 'splice_out', amountSat: 61_200 })).action

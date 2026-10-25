@@ -44,28 +44,39 @@ export interface Decision {
   senderFeeSats?: number;
 }
 
-const msatToSat = (msat: number) => Math.round(msat / 1000);
+/**
+ * Fees arrive in millisatoshis and are rounded UP to whole sats, amounts DOWN,
+ * as phoenixd rounds its own: the ledger can then trail the node by a fraction
+ * of a sat per payment, but never shows more than the node holds.
+ */
+export const msatFeeToSats = (msat: number) => Math.ceil(msat / 1000);
 
 export function figures(p: StoredPayment): Figures {
-  const feeSats = msatToSat(p.feeMsat);
+  const fee = msatFeeToSats(p.feeMsat);
   if (p.direction === 'out') {
-    // phoenixd's `sent` includes the fee.
-    return { amountSats: p.amountSat - feeSats, feeSats, creditedSats: 0, certain: true };
+    // phoenixd's `sent` is the payee's amount plus the fee, rounded down; take
+    // the fee off at the same rounding to get back to the payee's amount.
+    return {
+      amountSats: p.amountSat - Math.floor(p.feeMsat / 1000),
+      feeSats: fee,
+      creditedSats: 0,
+      certain: true
+    };
   }
   // Incoming `amountSat` is net of a liquidity fee. The payer sent the invoice
   // amount; that is the income, and the fee is what the node kept of it.
-  if (feeSats === 0)
-    return { amountSats: p.amountSat, feeSats, creditedSats: p.amountSat, certain: true };
+  if (fee === 0)
+    return { amountSats: p.amountSat, feeSats: fee, creditedSats: p.amountSat, certain: true };
   if (p.requestedSat != null)
     return {
       amountSats: p.requestedSat,
-      feeSats,
-      creditedSats: p.requestedSat - feeSats,
+      feeSats: fee,
+      creditedSats: p.requestedSat - fee,
       certain: true
     };
   return {
-    amountSats: p.amountSat + feeSats,
-    feeSats,
+    amountSats: p.amountSat + fee,
+    feeSats: fee,
     creditedSats: p.amountSat,
     certain: false
   };

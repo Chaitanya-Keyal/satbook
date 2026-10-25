@@ -1,7 +1,13 @@
 import { error, fail } from '@sveltejs/kit';
 import { getPortfolio } from '$lib/server/ledger';
 import { lightningConfigState } from '$lib/server/lightning/config';
-import { lightningWallet, listPayments, nodeStatus, TOP_UP_SAT } from '$lib/server/lightning/node';
+import {
+  fractionalPayments,
+  lightningWallet,
+  listPayments,
+  nodeStatus,
+  TOP_UP_SAT
+} from '$lib/server/lightning/node';
 import { describeError } from '$lib/server/lightning/http';
 import { phoenixd } from '$lib/server/lightning/phoenixd';
 import { pendingCount } from '$lib/server/lightning/review';
@@ -38,7 +44,8 @@ export const load: PageServerLoad = async () => {
         status,
         pending: pendingCount(),
         payments: nodeId ? listPayments(nodeId) : [],
-        ledgerSats: wallet ? (getPortfolio().walletBalancesSats[wallet.id] ?? 0) : null
+        ledgerSats: wallet ? (getPortfolio().walletBalancesSats[wallet.id] ?? 0) : null,
+        fractions: nodeId ? fractionalPayments(nodeId) : 0
       };
     } catch (e) {
       return { failed: e instanceof Error ? e.message : String(e) };

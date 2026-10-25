@@ -31,16 +31,21 @@ export function pct(part: number, whole: number): string {
 }
 
 /**
- * Lightning moves millisatoshis, but the ledger, phoenixd's balance and its
- * payment amounts are whole sats, each rounded on its own. A gap this small
- * between the ledger and the node is rounding, not a missing payment.
+ * How the ledger's balance for the node's wallet compares with the node's own.
+ * Lightning moves millisatoshis, but the ledger and phoenixd count whole sats:
+ * satbook rounds every fee up and every amount down, so the ledger can trail
+ * the node by less than a sat per payment that carried a fraction, never lead
+ * it. `fractions` is how many synced payments carried one; at least a sat is
+ * allowed, since an incoming amount's fraction never shows in phoenixd's API.
  */
-export const ROUNDING_TOLERANCE_SAT = 1;
-
-/** How the ledger's balance for the node's wallet compares with the node's own. */
-export function ledgerCheck(ledgerSats: number, nodeSats: number): 'match' | 'rounding' | 'gap' {
-  const gap = Math.abs(ledgerSats - nodeSats);
-  return gap === 0 ? 'match' : gap <= ROUNDING_TOLERANCE_SAT ? 'rounding' : 'gap';
+export function ledgerCheck(
+  ledgerSats: number,
+  nodeSats: number,
+  fractions = 0
+): 'match' | 'rounding' | 'gap' {
+  const short = nodeSats - ledgerSats;
+  if (short === 0) return 'match';
+  return short > 0 && short <= Math.max(1, fractions) ? 'rounding' : 'gap';
 }
 
 /**

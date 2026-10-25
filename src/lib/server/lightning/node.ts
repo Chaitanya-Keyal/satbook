@@ -1,7 +1,7 @@
 // What the dashboard shows: the node's live state, the synced payments with
 // their ledger status, and which satbook wallet stands for the node.
 
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db, schema } from '../db';
 import { getSetting, setSetting } from '../settings';
 import type { LightningConfig } from './config';
@@ -107,8 +107,20 @@ export interface PaymentView {
   txIdInLedger: number | null;
 }
 
-/** Fees arrive in msat; a fee is whole sats once it reaches the ledger. */
-export const msatToSat = (msat: number) => Math.round(msat / 1000);
+/** How many of the node's payments carry a fee that is not whole sats. */
+export function fractionalPayments(nodeId: string): number {
+  const t = schema.lightningPayments;
+  return (
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(t)
+      .where(and(eq(t.nodeId, nodeId), sql`${t.feeMsat} % 1000 != 0`))
+      .get()?.n ?? 0
+  );
+}
+
+/** Fees arrive in msat; shown rounded up, as the ledger records them. */
+export const msatToSat = (msat: number) => Math.ceil(msat / 1000);
 
 export function listPayments(nodeId: string, limit = 100): PaymentView[] {
   const t = schema.lightningPayments;

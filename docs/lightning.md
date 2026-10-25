@@ -23,8 +23,10 @@ without a node.
   thing for a given amount.
 - **Ledger check:** the satbook wallet that stands for the node, checked against
   the node's balance plus fee credit. Lightning moves millisatoshis while both
-  sides count whole sats, so a 1-sat gap is shown as rounding, not as a
-  mismatch.
+  sides count whole sats. satbook rounds every fee up and every amount down, as
+  phoenixd does, so the ledger can trail the node by less than a sat per
+  payment that carried a fraction. That shows as rounding. A ledger above the
+  node is always flagged.
 - **Activity:** every payment in and out. Each one shows the Lightning Address
   comment or the zap sender and message, any liquidity fee, and whether it is
   already in the ledger.

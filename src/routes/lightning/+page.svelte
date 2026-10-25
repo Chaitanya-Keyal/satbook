@@ -70,7 +70,7 @@
         if (!res.ok) return;
         const r = (await res.json()) as { paid: boolean; receivedSat?: number; feeMsat?: number };
         if (r.paid) {
-          invoicePaid = { sat: r.receivedSat ?? 0, feeSat: Math.round((r.feeMsat ?? 0) / 1000) };
+          invoicePaid = { sat: r.receivedSat ?? 0, feeSat: Math.ceil((r.feeMsat ?? 0) / 1000) };
           invoiceStatus = 'paid';
           await invalidateAll(); // the payment is in the activity and the review inbox now
         }
@@ -450,7 +450,7 @@
           {#if data.wallet && live.ledgerSats != null}
             {@const nodeSats = s.balance.balanceSat + s.balance.feeCreditSat}
             {@const diff = live.ledgerSats - nodeSats}
-            {@const check = ledgerCheck(live.ledgerSats, nodeSats)}
+            {@const check = ledgerCheck(live.ledgerSats, nodeSats, live.fractions)}
             <Tile
               label="ledger · {data.wallet.name}"
               value={formatAmount(live.ledgerSats, unit.value)}
