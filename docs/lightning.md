@@ -60,8 +60,9 @@ password it would still never pay, but a leak would be far worse.
 
 ## The reference setup
 
-This is the setup the module was built for. Any phoenixd that satbook can reach
-over HTTP works too.
+This is the setup the module was built for, packaged as
+[satpost](https://github.com/Chaitanya-Keyal/satpost). Any phoenixd that satbook
+can reach over HTTP works too.
 
 ```
 internet ──Funnel──▶ pay node :443  /.well-known/lnurlp/…, LNURLp callback  (LNbits)
@@ -77,8 +78,12 @@ pay node ──────────▶ ACINQ (the channel peer), an Electrum
 - **Only two paths are public**, through Tailscale Funnel: the Lightning Address
   lookup and the LNURLp callback that creates invoices. The phoenixd API, the
   LNbits admin and satbook itself stay on the tailnet.
-- **The full-access password never leaves phoenixd's host.** Sweeps and the odd
-  payment go through `phoenix-cli` over SSH.
+- **The full-access password never leaves phoenixd's host.** Sweeps, fee bumps
+  and the odd payment go through `phoenix-cli` (or satpost's wrapper) over SSH,
+  and satbook records them from its sync. Spending from the dashboard was
+  designed and set aside as not worth the risk for rare sends; satpost's
+  [spend-guard write-up](https://github.com/Chaitanya-Keyal/satpost/blob/main/docs/design/spend-guard.md)
+  has the design and the alternatives.
 
 ## Reaching the node from a tailnet-only satbook
 
