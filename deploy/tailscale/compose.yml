@@ -52,8 +52,10 @@ services:
     # to this file to change it).
     user: '${TS_UID:-10000}:${TS_UID:-10000}'
     hostname: satbook
-    # containerboot links its socket into /var/run/tailscale for the CLI.
-    tmpfs: [/tmp, /var/run/tailscale]
+    # containerboot links its socket into /var/run/tailscale for the CLI. Set the
+    # mode: on a restart Docker remakes this tmpfs as root's 755, which a
+    # non-root sidecar could no longer write.
+    tmpfs: [/tmp, '/var/run/tailscale:mode=1777']
     environment:
       TS_HOSTNAME: satbook # the device name, and so the first label of the URL
       TS_STATE_DIR: /var/lib/tailscale
